@@ -64,19 +64,16 @@ def _fill_template(template_path: str,
     return output_path
 
 
-def _write_cluster_config(run_id: RunId, task, cluster_config_template: str, docker_config=None):
+def _write_cluster_config(run_id: RunId, task, cluster_config_template: str):
+    cloud = task.best_resources.cloud
+    resources_vars = cloud.make_deploy_resources_variables(task)
     return _fill_template(
         cluster_config_template,
-        {
-            'instance_type': task.best_resources.types,
+        dict(resources_vars, **{
             'run_id': run_id,
             'setup_command': task.setup,
             'workdir': task.workdir,
-            'docker_image': task.docker_image,#'rayproject/ray-ml:latest-gpu',
-            'container_name': task.container_name, #'resnet_container',
-            'num_workers': 1,
-
-        },
+        })
     )
 
 
@@ -240,7 +237,7 @@ class Runner:
             raise e
 
 
-def execute(dag: sky.Dag, teardown: bool = False):
+def execute(dag: sky.Dag, dryrun: bool = False, teardown: bool = False):
     colorama.init()
 
     assert len(dag) == 1, 'Job launcher assumes 1 task for now'
@@ -249,10 +246,10 @@ def execute(dag: sky.Dag, teardown: bool = False):
     run_id = _get_run_id()
     cluster_config_file = _write_cluster_config(
         run_id, task, _get_cluster_config_template(task))
+    if dryrun:
+        return
 
-    global CLUSTER_CONFIG_FILE
-    CLUSTER_CONFIG_FILE = cluster_config_file
-
+    # FIXME: if a command fails, stop the rest.
     runner = Runner(run_id)
     runner.add_step('provision', 'Provision resources',
                     f'ray up -y {cluster_config_file} --no-config-cache')

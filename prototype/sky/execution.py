@@ -17,6 +17,7 @@ import datetime
 import json
 import os
 import subprocess
+import sys
 import time
 from typing import List, Optional, Callable
 
@@ -69,12 +70,12 @@ def _write_cluster_config(run_id: RunId, task, cluster_config_template: str):
     resources_vars = cloud.make_deploy_resources_variables(task)
     return _fill_template(
         cluster_config_template,
-        dict(resources_vars, **{
-            'run_id': run_id,
-            'setup_command': task.setup,
-            'workdir': task.workdir,
-        })
-    )
+        dict(
+            resources_vars, **{
+                'run_id': run_id,
+                'setup_command': task.setup,
+                'workdir': task.workdir,
+            }))
 
 
 def _execute_single_node_command(ip, command, private_key="~/.ssh/ray-autoscaler_us-west-2.pem", container_name="resnet_container"):
@@ -118,17 +119,29 @@ class Step:
         self.step_desc = step_desc
         self.execute_fn = execute_fn
 
-    def run(self, pipe_stdout=False, **kwargs) -> subprocess.CompletedProcess:
+    def run(self, **kwargs) -> subprocess.Popen:
         log_path = os.path.join(self.runner.logs_root, f'{self.step_id}.log')
         log_abs_path = os.path.abspath(log_path)
         tail_cmd = f'tail -n100 -f {log_abs_path}'
         if STREAM_LOGS_TO_CONSOLE:
-            return subprocess.run(
-                self.execute_fn + f' 2>&1 | tee {log_path}',
-                shell=True,
-                check=True,
-                stdout = subprocess.PIPE if pipe_stdout else None,
-            )  # TODO: `ray up` has a bug where if you redirect stdout and stderr, stdout is not flushed.
+            with open(log_path, 'w') as fout:
+                proc = subprocess.Popen(
+                    self.shell_command,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                for line in proc.stdout:
+                    sys.stdout.write(line)
+                    fout.write(line)
+                proc.communicate()
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(
+                        proc.returncode,
+                        proc.args,
+                    )
+                return proc
         else:
             print(
                 f'To view progress: {Style.BRIGHT}{tail_cmd}{Style.RESET_ALL}')

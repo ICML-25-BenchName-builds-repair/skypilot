@@ -91,7 +91,7 @@ def _execute_single_node_command(ip, command, private_key="~/.ssh/ray-autoscaler
 
 
 def _get_run_id() -> RunId:
-    return 'sky_distributed' #+ datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
+    return 'sky-' + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
 
 
 class EventLogger:

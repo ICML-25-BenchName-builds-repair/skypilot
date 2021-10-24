@@ -291,11 +291,11 @@ def execute(dag: sky.Dag, dryrun: bool = False, teardown: bool = False):
     runner = Runner(run_id)
     runner.add_step('provision', 'Provision resources',
                     f'ray up -y {cluster_config_file} --no-config-cache')
-    runner.add_step(
-        'sync', 'Sync files',
-        f'ray rsync_up {cluster_config_file} {task.workdir} {SKY_REMOTE_WORKDIR}'
-    )
-
+    if task.workdir is not None:
+        runner.add_step(
+            'sync', 'Sync files',
+            f'ray rsync_up {cluster_config_file} {task.workdir} {SKY_REMOTE_WORKDIR}'
+        )
     runner.add_step(
         'get_head_ip', 'Get Head IP',
         f'ray get-head-ip {cluster_config_file}'

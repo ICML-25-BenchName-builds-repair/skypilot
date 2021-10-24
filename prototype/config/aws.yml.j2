@@ -50,7 +50,9 @@ head_node_type: ray.head.default
 
 # Format: `REMOTE_PATH : LOCAL_PATH`
 file_mounts: {
+{% if workdir is not none %}
   "/tmp/workdir": {{workdir}}
+{% endif %}
 }
 
 # Patterns for files to exclude when running rsync up or rsync down
@@ -65,8 +67,7 @@ initialization_commands: []
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-  - pip3 install ray
-  - cd /tmp/workdir && {{setup_command}}
+  - mkdir -p /tmp/workdir && cd /tmp/workdir && {{setup_command}}
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:

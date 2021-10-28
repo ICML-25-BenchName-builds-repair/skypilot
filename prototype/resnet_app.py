@@ -1,4 +1,3 @@
-import json 
 import sky
 from sky import clouds
 
@@ -29,11 +28,6 @@ with sky.Dag() as dag:
     # The working directory contains all code and will be synced to remote.
     workdir = '~/Downloads/tpu'
 
-    docker_image = 'rayproject/ray-ml:latest-gpu'
-    container_name = 'resnet_container'
-
-    num_workers = 1
-
     # The setup command.  Will be run under the working directory.
     setup = 'pip install --upgrade pip && \
         conda activate resnet || \
@@ -55,19 +49,14 @@ with sky.Dag() as dag:
         'train',
         workdir=workdir,
         setup=setup,
-        post_setup_fn = post_setup_fn,
-        docker_image = docker_image,
-        container_name = container_name,
-        num_workers = num_workers,
         run=run,
     )
-
     train.set_inputs('gs://cloud-tpu-test-datasets/fake_imagenet',
                      estimated_size_gigabytes=70)
     train.set_outputs('resnet-model-dir', estimated_size_gigabytes=0.1)
     train.set_resources({
         ##### Fully specified
-        sky.Resources(clouds.AWS(), 'p3.2xlarge'),
+        # sky.Resources(clouds.AWS(), 'p3.2xlarge'),
         # sky.Resources(clouds.GCP(), 'n1-standard-16'),
         # sky.Resources(
         #     clouds.GCP(),
@@ -76,7 +65,7 @@ with sky.Dag() as dag:
         #     'V100',
         # ),
         ##### Partially specified
-        #sky.Resources(accelerators='V100'),
+        sky.Resources(accelerators='V100'),
         # sky.Resources(accelerators='tpu-v3-8'),
         # sky.Resources(clouds.AWS(), accelerators={'V100': 4}),
         # sky.Resources(clouds.AWS(), accelerators='V100'),

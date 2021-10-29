@@ -19,11 +19,11 @@ class Task(object):
             name=None,
             workdir=None,
             setup=None,
-            post_setup_fn = None,
-            docker_image = None,
-            container_name = None,
-            num_nodes = 0,
-            private_key = "~/.ssh/sky_key",
+            post_setup_fn=None,
+            docker_image=None,
+            container_name=None,
+            num_nodes=0,
+            private_key="~/.ssh/sky_key",
             run=None,
             args=None,  # TODO: consider removing.
     ):
@@ -51,12 +51,17 @@ class Task(object):
         # Filled in by the optimizer.  If None, this Task is not planned.
         self.best_resources = None
 
+        # Check for proper assignment of Task variables
+        #self.validate_config()
+
         dag = sky.DagContext.get_current_dag()
         dag.add(self)
 
     def validate_config(self):
         if bool(self.docker_image) != bool(self.container_name):
-            raise ValueError("Either docker image and container are both None or valid strings")
+            raise ValueError(
+                "Either docker image and container are both None or valid strings"
+            )
         if self.num_nodes <= 0:
             raise ValueError("Must be >0 total nodes")
         return

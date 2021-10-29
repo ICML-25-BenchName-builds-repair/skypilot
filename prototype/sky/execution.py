@@ -23,12 +23,13 @@ import re
 import subprocess
 import sys
 import time
-from typing import List, Optional
+from typing import Callable, Dict, List, Optional
 import yaml
 
 import sky
 from sky import cloud_stores
 
+IPAddr = str
 RunId = str
 
 SKY_LOGS_DIRECTORY = './logs'
@@ -76,14 +77,12 @@ def _write_cluster_config(run_id: RunId, task, cluster_config_template: str):
     return _fill_template(
         cluster_config_template,
         dict(
-            resources_vars,
-            **{
+            resources_vars, **{
                 'run_id': run_id,
                 'setup_command': task.setup,
                 'workdir': task.workdir,
-                'docker_image':
-                    task.docker_image,  #'rayproject/ray-ml:latest-gpu',
-                'container_name': task.container_name,  #'resnet_container',
+                'docker_image': task.docker_image,
+                'container_name': task.container_name,
                 'num_nodes': task.num_nodes,
                 'file_mounts': task.get_local_to_remote_file_mounts() or {},
             }))
@@ -129,7 +128,7 @@ class EventLogger:
 class Step:
 
     def __init__(self, runner: 'Runner', step_id: str, step_desc: str,
-                 execute_fn: str):
+                 execute_fn: Union[str, Callable[IPAddr, Dict[IPAddr, str]]]):
         self.runner = runner
         self.step_id = str(step_id)
         self.step_desc = step_desc
@@ -140,11 +139,25 @@ class Step:
         log_abs_path = os.path.abspath(log_path)
         tail_cmd = f'tail -n100 -f {log_abs_path}'
         if STREAM_LOGS_TO_CONSOLE:
-            return subprocess.run(
-                self.shell_command + f' 2>&1 | tee {log_path}',
-                shell=True,
-                check=True,
-            )  # TODO: `ray up` has a bug where if you redirect stdout and stderr, stdout is not flushed.
+            # TODO: `ray up` has a bug where if you redirect stdout and stderr, stdout is not flushed.
+            with open(log_path, 'w') as fout:
+                proc = subprocess.Popen(
+                    self.execute_fn,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                for line in proc.stdout:
+                    sys.stdout.write(line)
+                    fout.write(line)
+                proc.communicate()
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(
+                        proc.returncode,
+                        proc.args,
+                    )
+                return proc
         else:
             print(
                 f'To view progress: {Style.BRIGHT}{tail_cmd}{Style.RESET_ALL}')

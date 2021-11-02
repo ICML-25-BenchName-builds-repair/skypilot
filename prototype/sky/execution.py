@@ -30,6 +30,8 @@ from colorama import Fore, Style
 
 import sky
 from sky import cloud_stores
+from sky.logging import init_logger
+logger = init_logger(__name__)
 
 IPAddr = str
 RunId = str
@@ -71,7 +73,7 @@ def _fill_template(template_path: str,
         output_path, _ = template_path.rsplit('.', 1)
     with open(output_path, 'w') as fout:
         fout.write(content)
-    print(f'Created or updated file {output_path}')
+    logger.debug(f'Created or updated file {output_path}')
     return output_path
 
 
@@ -155,10 +157,11 @@ class Step:
                     shell=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True,
+                    # text=True,
                 )
                 for line in proc.stdout:
-                    sys.stdout.write(line)
+                    line = line.decode("utf-8")
+                    logger.debug(line.rstrip() + '\r')
                     fout.write(line)
                     lines.append(line)
                 proc.communicate()
@@ -171,7 +174,7 @@ class Step:
                     self.callback(''.join(lines))
                 return proc
         else:
-            print(
+            logger.info(
                 f'To view progress: {Style.BRIGHT}{tail_cmd}{Style.RESET_ALL}')
             proc = subprocess.run(
                 self.shell_command + f' 2>&1 >{log_path}',
@@ -208,11 +211,11 @@ class Runner:
 
     def run(self) -> 'Runner':
         self.logger.log('start_run')
-        print(f'{Fore.GREEN}', end='')
-        print('--------------------------')
-        print('  Sky execution started')
-        print('--------------------------')
-        print(f'{Fore.RESET}')
+        logger.info(f'{Fore.GREEN}')
+        logger.info('--------------------------')
+        logger.info('  Sky execution started')
+        logger.info(f'--------------------------{Fore.RESET}')
+        logger.info('')
 
         try:
             for step in self.steps:
@@ -225,14 +228,14 @@ class Runner:
                     },
                 )
                 if isinstance(step.shell_command, ShellCommand):
-                    print(
+                    logger.info(
                         f'{Fore.CYAN}Step {step.step_id} started: {step.step_desc}{Fore.RESET}\n{Style.DIM}{step.shell_command}{Style.RESET_ALL}'
                     )
                     step.run()
                 else:
                     assert len(self.cluster_ips) >= 1, self.cluster_ips
                     commands = step.shell_command(self.cluster_ips)
-                    print(
+                    logger.info(
                         f'{Fore.CYAN}Step {step.step_id} started: {step.step_desc}{Fore.RESET}\n{Style.DIM}{commands}{Style.RESET_ALL}'
                     )
                     for ip, cmd in commands.items():
@@ -242,17 +245,18 @@ class Runner:
                                                      self.task.container_name)
 
                 self.logger.log('finish_step')
-                print(f'{Fore.CYAN}Step {step.step_id} finished{Fore.RESET}\n')
+                logger.info(
+                    f'{Fore.CYAN}Step {step.step_id} finished{Fore.RESET}\n')
 
             self.logger.log('finish_run')
-            print(f'{Fore.GREEN}', end='')
-            print('---------------------------')
-            print('  Sky execution finished')
-            print('---------------------------')
-            print(f'{Fore.RESET}')
+            logger.info(f'{Fore.GREEN}')
+            logger.info('---------------------------')
+            logger.info('  Sky execution finished')
+            logger.info(f'---------------------------{Fore.RESET}')
+            logger.info('')
             return self
         except subprocess.CalledProcessError as e:
-            print(f'{Fore.RED}Step failed! {e}{Fore.RESET}')
+            logger.error(f'{Fore.RED}Step failed! {e}{Fore.RESET}')
             raise e
 
 
@@ -281,7 +285,7 @@ def _wait_until_ready(cluster_config_file, task, _):
                               check=True,
                               capture_output=True)
         output = proc.stdout.decode('ascii')
-        print(output)
+        logger.info(output)
         if f'{expected_worker_count} ray.worker.default' in output:
             break
         time.sleep(5)
@@ -298,7 +302,7 @@ def execute(dag: sky.Dag, dryrun: bool = False, teardown: bool = False):
         run_id, task, _get_cluster_config_template(task))
 
     if dryrun:
-        print('Dry run finished.')
+        logger.info('Dry run finished.')
         return
 
     autoscaler_dict = yaml.safe_load(open(cluster_config_file))
@@ -373,9 +377,9 @@ def execute(dag: sky.Dag, dryrun: bool = False, teardown: bool = False):
                         f'ray down -y {cluster_config_file}')
     runner.run()
     if not teardown:
-        print(
+        logger.info(
             f'  To log into the cloud VM:\t{Style.BRIGHT}ray attach {cluster_config_file} {Style.RESET_ALL}\n'
         )
-        print(
+        logger.info(
             f'  To teardown the resources:\t{Style.BRIGHT}ray down {cluster_config_file} -y {Style.RESET_ALL}\n'
         )

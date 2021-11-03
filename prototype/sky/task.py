@@ -1,8 +1,11 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Set, Union
 import urllib.parse
 
 import sky
 from sky import clouds
+from sky import resources
+
+Resources = resources.Resources
 
 
 def _is_cloud_store_url(url):
@@ -72,6 +75,7 @@ class Task(object):
     def set_inputs(self, inputs, estimated_size_gigabytes):
         self.inputs = inputs
         self.estimated_inputs_size_gigabytes = estimated_size_gigabytes
+        return self
 
     def get_inputs(self):
         return self.inputs
@@ -92,6 +96,7 @@ class Task(object):
     def set_outputs(self, outputs, estimated_size_gigabytes):
         self.outputs = outputs
         self.estimated_outputs_size_gigabytes = estimated_size_gigabytes
+        return self
 
     def get_outputs(self):
         return self.outputs
@@ -99,9 +104,18 @@ class Task(object):
     def get_estimated_outputs_size_gigabytes(self):
         return self.estimated_outputs_size_gigabytes
 
-    def set_resources(self, resources):
-        """Sets the allowed cloud-instance type combos to execute this op."""
+    def set_resources(self, resources: Union[Resources, Set[Resources]]):
+        """Sets the required resources to execute this task.
+
+        Args:
+          resources: either a sky.Resources, or a set of them.  The latter case
+            indicates the user intent "pick any one of these resources" to run
+            a task.
+        """
+        if isinstance(resources, Resources):
+            resources = {resources}
         self.resources = resources
+        return self
 
     def get_resources(self):
         return self.resources
@@ -109,6 +123,7 @@ class Task(object):
     def set_time_estimator(self, func):
         """Sets a func mapping resources to estimated time (secs)."""
         self.time_estimator_func = func
+        return self
 
     def estimate_runtime(self, resources):
         """Returns a func mapping resources to estimated time (secs)."""
@@ -138,6 +153,7 @@ class Task(object):
             node from which the task is launched.
         """
         self.file_mounts = file_mounts
+        return self
 
     def get_local_to_remote_file_mounts(self) -> Optional[Dict[str, str]]:
         """Returns file mounts of the form (dst=VM path, src=local path).

@@ -8,7 +8,7 @@
 [MASTER]
 
 # Files or directories to be skipped. They should be base names, not paths.
-ignore=third_party,ray_patches,providers
+ignore=third_party
 
 # Files or directories matching the regex patterns are skipped. The regex
 # matches against base names, not paths.
@@ -19,7 +19,7 @@ persistent=no
 
 # List of plugins (as comma separated values of python modules names) to load,
 # usually to register additional checkers.
-load-plugins=pylint.extensions.docstyle
+load-plugins=
 
 # Use multiple processes to speed up Pylint.
 jobs=4
@@ -85,8 +85,6 @@ disable=abstract-method,
         intern-builtin,
         invalid-str-codec,
         locally-disabled,
-        logging-format-interpolation,  # FIXME(sky): make pass.
-        logging-fstring-interpolation,  # FIXME(sky): make pass.
         long-builtin,
         long-suffix,
         map-builtin-not-iterating,

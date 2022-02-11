@@ -129,9 +129,6 @@ class Task:
         # Filled in by the optimizer.  If None, this Task is not planned.
         self.best_resources = None
 
-        # Block some of the clouds.
-        self.blocked_clouds = set()
-
         # Semantics.
         if num_nodes is not None and num_nodes > 1 and isinstance(
                 self.run, str):
@@ -349,7 +346,6 @@ class Task:
             storage_type = storage_plans[store]
             if storage_type is storage_lib.StorageType.S3:
                 # TODO: allow for Storage mounting of different clouds
-                self.update_file_mounts({'~/.aws': '~/.aws'})
                 self.update_file_mounts({
                     mnt_path: 's3://' + store.name,
                 })
@@ -366,6 +362,7 @@ class Task:
                     mnt_path: 'gs://' + store.name,
                 })
             elif storage_type is storage_lib.StorageType.AZURE:
+                # TODO when Azure Blob is done: sync ~/.azure
                 assert False, 'TODO: Azure Blob not mountable yet'
             else:
                 raise ValueError(f'Storage Type {storage_type} \
@@ -426,11 +423,6 @@ class Task:
         self.file_mounts.update(file_mounts)
         # For validation logic:
         return self.set_file_mounts(self.file_mounts)
-
-    def set_blocked_clouds(self, blocked_clouds: Set[clouds.Cloud]):
-        """Sets the clouds that this task should not run on."""
-        self.blocked_clouds = blocked_clouds
-        return self
 
     def get_local_to_remote_file_mounts(self) -> Optional[Dict[str, str]]:
         """Returns file mounts of the form (dst=VM path, src=local path).

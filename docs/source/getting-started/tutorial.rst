@@ -1,79 +1,77 @@
-.. _dnn-training:
-
 Tutorial: DNN Training
 ======================
-This example uses SkyPilot to train a Transformer-based language model from HuggingFace.
 
-First, define a :ref:`task YAML <yaml-spec>` with the resource requirements, the setup commands,
-and the commands to run:
+In this tutorial, we'll train a Transformer-based language model from HuggingFace.
+
+
+Defining our Training Task
+--------------------------
+
+We'll start by specifying a Sky task YAML with our resource requirements, cluster setup script,
+and run command:
 
 .. code-block:: yaml
 
-  # dnn.yaml
+   # dnn.yaml
 
-  name: huggingface
+   name: huggingface
 
-  resources:
-    accelerators: V100:4
+   resources:
+      accelerators: V100
 
-  # Optional: upload a working directory to remote ~/sky_workdir.
-  # Commands in "setup" and "run" will be executed under it.
-  #
-  # workdir: .
+   setup: |
+      git clone https://github.com/huggingface/transformers/
+      cd transformers
+      pip3 install .
+      cd examples/pytorch/text-classification
+      pip3 install -r requirements.txt
 
-  # Optional: upload local files.
-  # Format:
-  #   /remote/path: /local/path
-  #
-  # file_mounts:
-  #   ~/.vimrc: ~/.vimrc
-  #   ~/.netrc: ~/.netrc
+   run: |
+      cd transformers/examples/pytorch/text-classification
+      python3 run_glue.py \
+         --model_name_or_path bert-base-cased \
+         --dataset_name imdb  \
+         --do_train \
+         --max_seq_length 128 \
+         --per_device_train_batch_size 32 \
+         --learning_rate 2e-5 \
+         --max_steps 50 \
+         --output_dir /tmp/imdb/ --overwrite_output_dir \
+         --fp16
 
-  setup: |
-    set -e  # Exit if any command failed.
-    git clone https://github.com/huggingface/transformers/ || true
-    cd transformers
-    pip install .
-    cd examples/pytorch/text-classification
-    pip install -r requirements.txt torch==1.12.1+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
 
-  run: |
-    set -e  # Exit if any command failed.
-    cd transformers/examples/pytorch/text-classification
-    python run_glue.py \
-      --model_name_or_path bert-base-cased \
-      --dataset_name imdb  \
-      --do_train \
-      --max_seq_length 128 \
-      --per_device_train_batch_size 32 \
-      --learning_rate 2e-5 \
-      --max_steps 50 \
-      --output_dir /tmp/imdb/ --overwrite_output_dir \
-      --fp16
-
-.. tip::
-
-  In the YAML, the ``workdir`` and ``file_mounts`` fields are commented out. To
-  learn about how to use them to mount local dirs/files or object store buckets
-  (S3, GCS, R2) into your cluster, see :ref:`sync-code-artifacts`.
-
-Then, launch training:
+We can launch training by running:
 
 .. code-block:: console
 
    $ sky launch -c lm-cluster dnn.yaml
 
-This will provision the cheapest cluster with the required resources, execute the setup
-commands, then execute the run commands.
+The above will kick off a single training run after provisioning a cluster. But
+what if we would like to run multiple runs on the same cluster scheduled back-to-back
+for common workflows such as hyperparameter tuning? This is where Sky's job queue steps in.
 
-After the training job starts running, you can safely :code:`Ctrl-C` to detach
-from logging and the job will continue to run remotely on the cluster.  To stop
-the job, use the :code:`sky cancel <cluster_name> <job_id>` command (refer to :ref:`CLI reference <cli>`).
+Scheduling Multiple Training Jobs
+---------------------------------
 
-After training, :ref:`transfer artifacts <sync-code-artifacts>` such
-as logs and checkpoints using familiar tools.
+We can schedule multiple jobs by using :code:`sky exec`, which will automatically queue
+each job for execution on the cluster. The :code:`-d` flag can be used to detach logging
+from the terminal, which is useful for launching long-running jobs concurrently.
 
-.. tip::
+.. code-block:: bash
 
-  Feel free to copy-paste the YAML above and customize it for
-  your own project.
+   # Launch the job 5 times
+   sky exec lm-cluster dnn.yaml -d
+   sky exec lm-cluster dnn.yaml -d
+   sky exec lm-cluster dnn.yaml -d
+   sky exec lm-cluster dnn.yaml -d
+   sky exec lm-cluster dnn.yaml -d
+
+If we wish to view the output for each run after it has completed we can use:
+
+.. code-block:: bash
+
+   # View the jobs in the queue
+   sky queue lm-cluster
+
+   # Pick a JOB_ID to view
+   sky logs lm-cluster JOB_ID

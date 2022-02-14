@@ -1,10 +1,8 @@
-.. _cli:
+CLI Reference
+=============
 
-Command Line Interface
-======================
-
-Core CLI
----------
+Core
+----
 
 .. click:: sky.cli:launch
    :prog: sky launch
@@ -14,12 +12,12 @@ Core CLI
    :prog: sky exec
    :nested: full
 
-.. click:: sky.cli:stop
-   :prog: sky stop
-   :nested: full
-
 .. click:: sky.cli:start
    :prog: sky start
+   :nested: full
+
+.. click:: sky.cli:stop
+   :prog: sky stop
    :nested: full
 
 .. click:: sky.cli:down
@@ -30,12 +28,25 @@ Core CLI
    :prog: sky status
    :nested: full
 
-.. click:: sky.cli:autostop
-   :prog: sky autostop
+
+Interactive Nodes
+------------
+
+.. click:: sky.cli:cpunode
+   :prog: sky cpunode
    :nested: full
 
-Job Queue CLI
---------------
+.. click:: sky.cli:gpunode
+   :prog: sky gpunode
+   :nested: full
+
+.. click:: sky.cli:tpunode
+   :prog: sky tpunode
+   :nested: full
+
+
+Job Queue
+---------
 
 .. click:: sky.cli:queue
    :prog: sky queue
@@ -50,65 +61,9 @@ Job Queue CLI
    :nested: full
 
 
-Managed Spot Jobs CLI
----------------------------
-
-.. click:: sky.cli:spot_launch
-   :prog: sky spot launch
-   :nested: full
-
-.. click:: sky.cli:spot_queue
-   :prog: sky spot queue
-   :nested: full
-
-.. click:: sky.cli:spot_cancel
-   :prog: sky spot cancel
-   :nested: full
-
-.. click:: sky.cli:spot_logs
-   :prog: sky spot logs
-   :nested: full
-
-Interactive Node CLI
------------------------
-
-.. click:: sky.cli:cpunode
-   :prog: sky cpunode
-   :nested: full
-
-.. _sky-gpunode:
-.. click:: sky.cli:gpunode
-   :prog: sky gpunode
-   :nested: full
-
-.. click:: sky.cli:tpunode
-   :prog: sky tpunode
-   :nested: full
-
-
-Storage CLI
-------------
-
-.. click:: sky.cli:storage_ls
-   :prog: sky storage ls
-   :nested: full
-
-.. click:: sky.cli:storage_delete
-   :prog: sky storage delete
-   :nested: full
-
-Utils: ``show-gpus``/``check``/``cost-report``
--------------------------------------------------
-
+Miscellaneous
+-------------
 
 .. click:: sky.cli:show_gpus
    :prog: sky show-gpus
-   :nested: full
-
-.. click:: sky.cli:check
-   :prog: sky check
-   :nested: full
-
-.. click:: sky.cli:cost_report
-   :prog: sky cost-report
    :nested: full

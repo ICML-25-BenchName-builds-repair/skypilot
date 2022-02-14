@@ -1,39 +1,34 @@
 # Configuration file for the Sphinx documentation builder.
 
-import os
 import sys
+import os
 
 sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../'))
-sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath('../prototype'))
 
 # -- Project information
 
-project = 'SkyPilot'
-copyright = '2023, SkyPilot Team'
-author = 'the SkyPilot authors'
+project = 'Sky'
+copyright = '2022, Sky Team'
+author = 'the Sky authors'
 
-# The version info for the project you're documenting, acts as replacement for
-# |version| and |release|, also used in various other places throughout the
-# built documents.
-from sky import __version__ as version
-
-# The full version, including alpha/beta/rc tags.
-release = version
+release = '0.1'
+version = '0.1.0'
 
 # -- General configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
     'sphinx.ext.duration',
     'sphinx.ext.doctest',
-    'sphinx.ext.intersphinx',
+    'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
+    'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
-    'sphinx_autodoc_typehints',
+    'sphinx.ext.intersphinx',
     'sphinx_click',
-    'sphinx_copybutton',
+    'sphinx_autodoc_typehints',
+    'myst_nb',
 ]
 
 intersphinx_mapping = {
@@ -51,48 +46,27 @@ pygments_style = None
 autosummary_generate = True
 napolean_use_rtype = False
 
-# -- Options for autodoc
-
-# Python methods should be presented in source code order
-autodoc_member_order = 'bysource'
-
 # -- Options for HTML output
 
 html_theme = 'sphinx_book_theme'
 html_theme_options = {
+    # 'logo_only': True,
     # 'show_toc_level': 2,
-    'logo_only': True,
-    'repository_url': 'https://github.com/skypilot-org/skypilot',
-    'use_repository_button': True,
-    'use_issues_button': True,
-    'use_edit_page_button': True,
-    'path_to_docs': 'docs/source',
 }
-
-# The name for this set of Sphinx documents.  If None, it defaults to
-# "<project> v<release> documentation".
-html_title = 'SkyPilot documentation'
 
 # -- Options for EPUB output
 epub_show_urls = 'footnote'
 
-# -- Options for sphinx-copybutton
-copybutton_prompt_text = r'\$ '
-copybutton_prompt_is_regexp = True
+# -- Options for myst
+jupyter_execute_notebooks = 'force'
+execution_allow_errors = False
 
-html_show_sourcelink = False
+# Notebook cell execution timeout; defaults to 30.
+execution_timeout = 100
 
-# The name of an image file (relative to this directory) to place at the top
-# of the sidebar.
-html_logo = 'images/skypilot-wide-light-1k.png'
+always_document_param_types = True
+html_show_sourcelink = True
 
-# The name of an image file (within the static path) to use as favicon of the
-# docs. This file should be a Windows icon file (.ico), 16x16 or 32x32 pixels.
-html_favicon = '_static/favicon.ico'
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named 'default.css' will overwrite the builtin 'default.css'.
-html_static_path = ['_static']
-html_js_files = ["custom.js"]
-html_css_files = ["custom.css"]
+napoleon_google_docstring = True
+napoleon_use_param = False
+napoleon_use_ivar = True

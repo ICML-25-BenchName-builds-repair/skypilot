@@ -359,8 +359,7 @@ class Task:
         return self
 
     def add_storage_mounts(self) -> None:
-        """Adds storage mounts to the Storage object
-        """
+        """Adds storage mounts to the Task."""
         # Hack: Hardcode storage_plans to AWS for optimal plan
         # Optimizer is supposed to choose storage plan but we
         # move this here temporarily
@@ -383,8 +382,6 @@ class Task:
                 })
             elif storage_type is storage_lib.StorageType.GCS:
                 # Remember to run `gcloud auth application-default login`
-                self.update_file_mounts(
-                    {'~/.config/gcloud': '~/.config/gcloud'})
                 self.setup = '[[ -z $GOOGLE_APPLICATION_CREDENTIALS ]] && ' + \
                 'echo GOOGLE_APPLICATION_CREDENTIALS=' + \
                 '~/.config/gcloud/application_default_credentials.json >> ' + \
@@ -400,7 +397,7 @@ class Task:
                 raise ValueError(f'Storage Type {storage_type} \
                     does not exist!')
 
-    def set_file_mounts(self, file_mounts: Dict[str, str]):
+    def set_file_mounts(self, file_mounts: Optional[Dict[str, str]]) -> None:
         """Sets the file mounts for this Task.
 
         File mounts are a dictionary of { remote_path: local_path/cloud URI }.
@@ -420,10 +417,13 @@ class Task:
             })
 
         Args:
-          file_mounts: a dict of { remote_path: local_path/cloud URI }, where
-            remote is the VM on which this Task will eventually run on, and
-            local is the node from which the task is launched.
+          file_mounts: either None or a dict of { remote_path: local_path/cloud
+            URI }, where remote is the VM on which this Task will eventually
+            run on, and local is the node from which the task is launched.
         """
+        if file_mounts is None:
+            self.file_mounts = None
+            return self
         for target, source in file_mounts.items():
             if target.endswith('/') or source.endswith('/'):
                 raise ValueError(

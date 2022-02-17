@@ -1,5 +1,5 @@
-# Documentation
-Sphinx docs based on ReadTheDocs.
+# Sky Document
+Sky sphinx docs based on RTD.
 
 ## Build
 ```bash

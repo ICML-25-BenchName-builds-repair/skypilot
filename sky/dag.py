@@ -1,24 +1,46 @@
-"""DAGs: user applications to be run."""
+"""DAGs: user applications to be run on Sky."""
 import pprint
-import threading
-from typing import List, Optional
+
+
+class DagContext:
+    """A global stack of Dags.
+
+    Currently, we only use one sky.Dag.
+    """
+    _current_dag = None
+    _previous_dags = []
+
+    @classmethod
+    def push_dag(cls, dag):
+        if cls._current_dag:
+            cls._previous_dags.append(cls._current_dag)
+        cls._current_dag = dag
+
+    @classmethod
+    def pop_dag(cls):
+        old_dag = cls._current_dag
+        if cls._previous_dags:
+            cls._current_dag = cls._previous_dags.pop()
+        else:
+            cls._current_dag = None
+        return old_dag
+
+    @classmethod
+    def get_current_dag(cls):
+        return cls._current_dag
 
 
 class Dag:
-    """Dag: a user application, represented as a DAG of Tasks.
+    """Dag: a user application, represented as a DAG of Tasks."""
 
-    Examples:
-        >>> import sky
-        >>> with sky.Dag() as dag:
-        >>>     task = sky.Task(...)
-    """
+    _PREVIOUS_DAGS = []
+    _CURRENT_DAG = None
 
     def __init__(self):
         self.tasks = []
         import networkx as nx  # pylint: disable=import-outside-toplevel
 
         self.graph = nx.DiGraph()
-        self.name = None
 
     def add(self, task):
         self.graph.add_node(task)
@@ -37,11 +59,11 @@ class Dag:
         return len(self.tasks)
 
     def __enter__(self):
-        push_dag(self)
+        DagContext.push_dag(self)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        pop_dag()
+        DagContext.pop_dag()
 
     def __repr__(self):
         pformat = pprint.pformat(self.tasks)
@@ -49,49 +71,3 @@ class Dag:
 
     def get_graph(self):
         return self.graph
-
-    def is_chain(self) -> bool:
-        # NOTE: this method assumes that the graph has no cycle.
-        is_chain = True
-        visited_zero_out_degree = False
-        for node in self.graph.nodes:
-            out_degree = self.graph.out_degree(node)
-            if out_degree > 1:
-                is_chain = False
-                break
-            elif out_degree == 0:
-                if visited_zero_out_degree:
-                    is_chain = False
-                    break
-                else:
-                    visited_zero_out_degree = True
-        return is_chain
-
-
-class _DagContext(threading.local):
-    """A thread-local stack of Dags."""
-    _current_dag = None
-    _previous_dags: List[Dag] = []
-
-    def push_dag(self, dag):
-        if self._current_dag is not None:
-            self._previous_dags.append(self._current_dag)
-        self._current_dag = dag
-
-    def pop_dag(self):
-        old_dag = self._current_dag
-        if self._previous_dags:
-            self._current_dag = self._previous_dags.pop()
-        else:
-            self._current_dag = None
-        return old_dag
-
-    def get_current_dag(self) -> Optional[Dag]:
-        return self._current_dag
-
-
-_dag_context = _DagContext()
-# Exposed via `sky.dag.*`.
-push_dag = _dag_context.push_dag
-pop_dag = _dag_context.pop_dag
-get_current_dag = _dag_context.get_current_dag

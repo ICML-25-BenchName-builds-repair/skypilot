@@ -15,9 +15,9 @@ DAG assumption: chain.  If multiple branches, take into account of parallelism?
 Incorporate the notion of region/zone (affects pricing).
 Incorporate the notion of per-account egress quota (affects pricing).
 """
-import time_estimators
-
 import sky
+
+import time_estimators
 
 
 def make_application():
@@ -43,7 +43,7 @@ def make_application():
             sky.Resources(sky.AWS(), 'p3.2xlarge'),  # 1 V100, EC2.
             sky.Resources(sky.AWS(), 'p3.8xlarge'),  # 4 V100s, EC2.
             # Tuples mean all resources are required.
-            sky.Resources(sky.GCP(), 'n1-standard-8', accelerators='tpu-v3-8'),
+            sky.Resources(sky.GCP(), 'n1-standard-8', 'tpu-v3-8'),
         })
 
         train_op.set_time_estimator(time_estimators.resnet50_estimate_runtime)
@@ -60,14 +60,14 @@ def make_application():
         infer_op.set_resources({
             sky.Resources(sky.AWS(), 'inf1.2xlarge'),
             sky.Resources(sky.AWS(), 'p3.2xlarge'),
-            sky.Resources(sky.GCP(), 'n1-standard-4', accelerators='T4'),
-            sky.Resources(sky.GCP(), 'n1-standard-8', accelerators='T4'),
+            sky.Resources(sky.GCP(), 'n1-standard-4', 'T4'),
+            sky.Resources(sky.GCP(), 'n1-standard-8', 'T4'),
         })
 
         infer_op.set_time_estimator(
             time_estimators.resnet50_infer_estimate_runtime)
 
-        # Chain the tasks (Airflow syntax).
+        # Chain the sky.tasks (Airflow syntax).
         # The dependency represents data flow.
         train_op >> infer_op
 
@@ -76,4 +76,4 @@ def make_application():
 
 dag = make_application()
 sky.optimize(dag, minimize=sky.OptimizeTarget.COST)
-# sky.optimize(dag, minimize=sky.OptimizeTarget.TIME)
+# sky.optimize(dag, minimize=OptimizeTarget.TIME)

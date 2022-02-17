@@ -1,14 +1,15 @@
 ### Source: https://docs.ray.io/en/latest/tune/examples/mnist_ptl_mini.html
 import math
-import os
 
-from filelock import FileLock
-from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
-import pytorch_lightning as pl
-from ray import tune
-from ray.tune.integration.pytorch_lightning import TuneReportCallback
 import torch
+from filelock import FileLock
 from torch.nn import functional as F
+import pytorch_lightning as pl
+from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
+import os
+from ray.tune.integration.pytorch_lightning import TuneReportCallback
+
+from ray import tune
 
 
 class LightningMNISTClassifier(pl.LightningModule):

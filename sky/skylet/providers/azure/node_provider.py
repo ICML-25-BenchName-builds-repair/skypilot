@@ -1,35 +1,30 @@
-import copy
 import json
 import logging
 from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from azure.identity import AzureCliCredential
+from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_USER_NODE_TYPE,
+)
 from sky.skylet.providers.azure.config import (
     bootstrap_azure,
     get_azure_sdk_function,
 )
-from sky.skylet.providers.command_runner import SkyDockerCommandRunner
-from sky.provision import docker_utils
-
-from ray.autoscaler._private.command_runner import SSHCommandRunner
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_NODE_NAME,
-    TAG_RAY_USER_NODE_TYPE,
-)
 
 VM_NAME_MAX_LEN = 64
-UNIQUE_ID_LEN = 4
+VM_NAME_UUID_LEN = 8
 
 logger = logging.getLogger(__name__)
 azure_logger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
@@ -61,23 +56,9 @@ class AzureNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        # TODO(suquark): This is a temporary patch for resource group.
-        # By default, Ray autoscaler assumes the resource group is still here even
-        # after the whole cluster is destroyed. However, now we deletes the resource
-        # group after tearing down the cluster. To comfort the autoscaler, we need
-        # to create/update it here, so the resource group always exists.
-        from sky.skylet.providers.azure.config import _configure_resource_group
-
-        _configure_resource_group(
-            {"cluster_name": cluster_name, "provider": provider_config}
-        )
         subscription_id = provider_config["subscription_id"]
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
-        # Sky only supports Azure CLI credential for now.
-        # Increase the timeout to fix the Azure get-access-token (used by ray azure
-        # node_provider) timeout issue.
-        # Tracked in https://github.com/Azure/azure-cli/issues/20404#issuecomment-1249575110
-        credential = AzureCliCredential(process_timeout=30)
+        credential = DefaultAzureCredential(exclude_shared_token_cache_credential=True)
         self.compute_client = ComputeManagementClient(credential, subscription_id)
         self.network_client = NetworkManagementClient(credential, subscription_id)
         self.resource_client = ResourceManagementClient(credential, subscription_id)
@@ -89,11 +70,8 @@ class AzureNodeProvider(NodeProvider):
 
     @synchronized
     def _get_filtered_nodes(self, tag_filters):
-        # add cluster name filter to only get nodes from this cluster
-        cluster_tag_filters = {**tag_filters, TAG_RAY_CLUSTER_NAME: self.cluster_name}
-
         def match_tags(vm):
-            for k, v in cluster_tag_filters.items():
+            for k, v in tag_filters.items():
                 if vm.tags.get(k) != v:
                     return False
             return True
@@ -158,10 +136,7 @@ class AzureNodeProvider(NodeProvider):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
-            >>> provider = ... # doctest: +SKIP
-            >>> provider.non_terminated_nodes( # doctest: +SKIP
-            ...     {TAG_RAY_NODE_KIND: "worker"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"})
             ["node-1", "node-2"]
         """
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
@@ -206,48 +181,11 @@ class AzureNodeProvider(NodeProvider):
             VALIDITY_TAGS = [
                 TAG_RAY_CLUSTER_NAME,
                 TAG_RAY_NODE_KIND,
+                TAG_RAY_LAUNCH_CONFIG,
                 TAG_RAY_USER_NODE_TYPE,
             ]
             filters = {tag: tags[tag] for tag in VALIDITY_TAGS if tag in tags}
-            filters_with_launch_config = copy.copy(filters)
-            if TAG_RAY_LAUNCH_CONFIG in tags:
-                filters_with_launch_config[TAG_RAY_LAUNCH_CONFIG] = tags[
-                    TAG_RAY_LAUNCH_CONFIG
-                ]
-
-            # SkyPilot: We try to use the instances with the same matching launch_config first. If
-            # there is not enough instances with matching launch_config, we then use all the
-            # instances with the same matching launch_config plus some instances with wrong
-            # launch_config.
-            nodes_matching_launch_config = self.stopped_nodes(
-                filters_with_launch_config
-            )
-            nodes_matching_launch_config.sort(reverse=True)
-            if len(nodes_matching_launch_config) >= count:
-                reuse_nodes = nodes_matching_launch_config[:count]
-            else:
-                nodes_all = self.stopped_nodes(filters)
-                nodes_non_matching_launch_config = [
-                    n for n in nodes_all if n not in nodes_matching_launch_config
-                ]
-                # This sort is for backward compatibility, where the user already has
-                # leaked stopped nodes with the different launch config before update
-                # to #1671, and the total number of the leaked nodes is greater than
-                # the number of nodes to be created. With this, we make sure the nodes
-                # are reused in a deterministic order (sorting by str IDs; we cannot
-                # get the launch time info here; otherwise, sort by the launch time
-                # is more accurate.)
-                # This can be removed in the future when we are sure all the users
-                # have updated to #1671.
-                nodes_non_matching_launch_config.sort(reverse=True)
-                reuse_nodes = (
-                    nodes_matching_launch_config + nodes_non_matching_launch_config
-                )
-                # The total number of reusable nodes can be less than the number of nodes to be created.
-                # This `[:count]` is fine, as it will get all the reusable nodes, even if there are
-                # less nodes.
-                reuse_nodes = reuse_nodes[:count]
-
+            reuse_nodes = self.stopped_nodes(filters)[:count]
             logger.info(
                 f"Reusing nodes {list(reuse_nodes)}. "
                 "To disable reuse, set `cache_stopped_nodes: False` "
@@ -279,11 +217,9 @@ class AzureNodeProvider(NodeProvider):
         config_tags.update(tags)
         config_tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
-        vm_name = "{node}-{unique_id}-{vm_id}".format(
-            node=config_tags.get(TAG_RAY_NODE_NAME, "node"),
-            unique_id=self.provider_config["unique_id"],
-            vm_id=uuid4().hex[:UNIQUE_ID_LEN],
-        )[:VM_NAME_MAX_LEN]
+        name_tag = config_tags.get(TAG_RAY_NODE_NAME, "node")
+        unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
+        vm_name = "{name}-{id}".format(name=name_tag, id=unique_id)
         use_internal_ips = self.provider_config.get("use_internal_ips", False)
 
         template_params = node_config["azure_arm_parameters"].copy()
@@ -291,9 +227,6 @@ class AzureNodeProvider(NodeProvider):
         template_params["provisionPublicIp"] = not use_internal_ips
         template_params["vmTags"] = config_tags
         template_params["vmCount"] = count
-        template_params["msi"] = self.provider_config["msi"]
-        template_params["nsg"] = self.provider_config["nsg"]
-        template_params["subnet"] = self.provider_config["subnet"]
 
         parameters = {
             "properties": {
@@ -311,7 +244,7 @@ class AzureNodeProvider(NodeProvider):
         )
         create_or_update(
             resource_group_name=resource_group,
-            deployment_name=vm_name,
+            deployment_name="ray-vm-{}".format(name_tag),
             parameters=parameters,
         ).wait()
 
@@ -423,31 +356,3 @@ class AzureNodeProvider(NodeProvider):
     @staticmethod
     def bootstrap_config(cluster_config):
         return bootstrap_azure(cluster_config)
-
-    def get_command_runner(
-        self,
-        log_prefix,
-        node_id,
-        auth_config,
-        cluster_name,
-        process_runner,
-        use_internal_ip,
-        docker_config=None,
-    ):
-        common_args = {
-            "log_prefix": log_prefix,
-            "node_id": node_id,
-            "provider": self,
-            "auth_config": auth_config,
-            "cluster_name": cluster_name,
-            "process_runner": process_runner,
-            "use_internal_ip": use_internal_ip,
-        }
-        if docker_config and docker_config["container_name"] != "":
-            if "docker_login_config" in self.provider_config:
-                docker_config["docker_login_config"] = docker_utils.DockerLoginConfig(
-                    **self.provider_config["docker_login_config"]
-                )
-            return SkyDockerCommandRunner(docker_config, **common_args)
-        else:
-            return SSHCommandRunner(**common_args)

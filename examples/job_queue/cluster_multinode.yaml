@@ -8,6 +8,7 @@
 #   sky exec mjq job.yaml
 
 resources:
-  accelerators: T4
+  cloud: aws
+  accelerators: K80
 
 num_nodes: 2

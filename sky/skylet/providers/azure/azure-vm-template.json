@@ -50,7 +50,7 @@
                 "description": "The size of the VM"
             }
         },
-        "vmTags": { 
+        "vmTags": {
             "type": "object",
             "metadata": {
                 "description": "Tags for the VM"
@@ -82,56 +82,17 @@
             "metadata": {
                 "description": "Specifies the maximum price to pay for Azure Spot VM."
             }
-        },
-        "osDiskSizeGB": {
-            "type": "int",
-            "metadata": {
-                "description": "OS disk size in GBs."
-            }
-        },
-        "msi": {
-            "type": "string",
-            "metadata": {
-                "description": "Managed service identity resource id."
-            }
-        },
-        "nsg": {
-            "type": "string",
-            "metadata": {
-                "description": "Network security group resource id."
-            }
-        },
-        "subnet": {
-            "type": "string",
-            "metadata": {
-                "descriptions": "Subnet resource id."
-            }
-        },
-        "osDiskTier": {
-            "type": "string",
-            "allowedValues": [
-                "Premium_LRS",
-                "StandardSSD_LRS",
-                "Standard_LRS"
-            ],
-            "metadata": {
-                "description": "OS disk tier."
-            }
-        },
-        "cloudInitSetupCommands": {
-            "type": "string",
-            "metadata": {
-                "description": "Base64 encoded cloud-init setup commands."
-            }
         }
     },
     "variables": {
         "location": "[resourceGroup().location]",
-        "networkInterfaceNamePrivate": "[concat(parameters('vmName'), '-nic')]",
-        "networkInterfaceNamePublic": "[concat(parameters('vmName'), '-nic-public')]",
+        "networkInterfaceNamePrivate": "[concat(parameters('vmName'),'-nic')]",
+        "networkInterfaceNamePublic": "[concat(parameters('vmName'),'-nic-public')]",
         "networkInterfaceName": "[if(parameters('provisionPublicIp'), variables('networkInterfaceNamePublic'), variables('networkInterfaceNamePrivate'))]",
         "networkIpConfig": "[guid(resourceGroup().id, parameters('vmName'))]",
-        "publicIpAddressName": "[concat(parameters('vmName'), '-ip')]"
+        "osDiskType": "Standard_LRS",
+        "publicIpAddressName": "[concat(parameters('vmName'), '-ip' )]",
+        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet')]"
     },
     "resources": [
         {
@@ -152,7 +113,7 @@
                         "name": "[variables('networkIpConfig')]",
                         "properties": {
                             "subnet": {
-                                "id": "[parameters('subnet')]"
+                                "id": "[variables('subnetRef')]"
                             },
                             "privateIPAllocationMethod": "Dynamic",
                             "publicIpAddress": {
@@ -162,7 +123,7 @@
                     }
                 ],
                 "networkSecurityGroup": {
-                    "id": "[parameters('nsg')]"
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
                 }
             },
             "condition": "[parameters('provisionPublicIp')]"
@@ -182,14 +143,14 @@
                         "name": "[variables('networkIpConfig')]",
                         "properties": {
                             "subnet": {
-                                "id": "[parameters('subnet')]"
+                                "id": "[variables('subnetRef')]"
                             },
                             "privateIPAllocationMethod": "Dynamic"
                         }
                     }
                 ],
                 "networkSecurityGroup": {
-                    "id": "[parameters('nsg')]"
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
                 }
             },
             "condition": "[not(parameters('provisionPublicIp'))]"
@@ -234,9 +195,8 @@
                     "osDisk": {
                         "createOption": "fromImage",
                         "managedDisk": {
-                            "storageAccountType": "[parameters('osDiskTier')]"
-                        },
-                        "diskSizeGB": "[parameters('osDiskSizeGB')]"
+                            "storageAccountType": "[variables('osDiskType')]"
+                        }
                     },
                     "imageReference": {
                         "publisher": "[parameters('imagePublisher')]",
@@ -266,8 +226,7 @@
                                 }
                             ]
                         }
-                    },
-                    "customData": "[parameters('cloudInitSetupCommands')]"
+                    }
                 },
                 "priority": "[parameters('priority')]",
                 "billingProfile": "[parameters('billingProfile')]"
@@ -275,7 +234,7 @@
             "identity": {
                 "type": "UserAssigned",
                 "userAssignedIdentities": {
-                    "[parameters('msi')]": {
+                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'ray-msi-user-identity')]": {
                     }
                 }
             }

@@ -2,6 +2,7 @@ import os
 from typing import List, Optional
 
 import sky
+from sky import clouds
 
 with sky.Dag() as dag:
     # Total Nodes, INCLUDING Head Node
@@ -30,7 +31,7 @@ with sky.Dag() as dag:
     )
 
     train.set_resources({
-        sky.Resources(sky.AWS(), 'p3.2xlarge'),
+        sky.Resources(clouds.AWS(), 'p3.2xlarge'),
     })
 
 sky.launch(dag)

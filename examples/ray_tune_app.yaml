@@ -1,6 +1,7 @@
 resources:
     cloud: aws
-    accelerators: V100
+    accelerators:
+        V100: 1
 
 num_nodes: 2
 
@@ -11,6 +12,6 @@ setup: |
     pip3 install ray[tune] pytorch-lightning==1.4.9 lightning-bolts torchvision
 
 run: |
-    if [ "${SKYPILOT_NODE_RANK}" == "0" ]; then
+    if [ "${SKY_NODE_RANK}" == "0" ]; then
         python3 tune_ptl_example.py
     fi

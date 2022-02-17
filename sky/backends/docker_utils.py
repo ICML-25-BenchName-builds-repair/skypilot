@@ -4,23 +4,21 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import colorama
 
+from sky import docker_adaptor
 from sky import sky_logging
 from sky import task as task_mod
-from sky.adaptors import docker
 
 logger = sky_logging.init_logger(__name__)
 
 # Add docker-cli from official docker image to support docker-in-docker.
 # We copy instead of installing docker-cli to keep the image builds fast.
-DOCKERFILE_TEMPLATE = r"""
+DOCKERFILE_TEMPLATE = """
 FROM {base_image}
-SHELL ["/bin/bash", "-c"]
 COPY --from=docker:dind /usr/local/bin/docker /usr/local/bin/
-RUN apt-get update && apt-get -y install sudo
 """.strip()
 
 DOCKERFILE_SETUPCMD = """RUN {setup_command}"""
@@ -32,16 +30,15 @@ CONDA_SETUP_PREFIX = '. $(conda info --base)/etc/profile.d/conda.sh 2> ' \
 
 SKY_DOCKER_SETUP_SCRIPT = 'sky_setup.sh'
 SKY_DOCKER_RUN_SCRIPT = 'sky_run.sh'
-SKY_DOCKER_WORKDIR = 'sky_workdir'
 
 
 def create_dockerfile(
     base_image: str,
-    setup_command: Optional[str],
+    setup_command: str,
     copy_path: str,
     build_dir: str,
-    run_command: Optional[str] = None,
-) -> Tuple[str, Dict[str, str]]:
+    run_command: str = None,
+) -> str:
     """Writes a valid dockerfile to the specified path.
 
     performs three operations:
@@ -78,8 +75,7 @@ def create_dockerfile(
         dockerfile_contents += '\n' + DOCKERFILE_COPYCMD.format(
             copy_command=copy_docker_cmd)
 
-    def add_script_to_dockerfile(dockerfile_contents: str,
-                                 multiline_cmds: Optional[str],
+    def add_script_to_dockerfile(dockerfile_contents: str, multiline_cmds: str,
                                  out_filename: str):
         # Converts multiline commands to a script and adds the script to the
         # dockerfile. You still need to add the docker command to run the
@@ -120,17 +116,18 @@ def create_dockerfile(
 
 
 def _execute_build(tag, context_path):
-    """Executes a dockerfile build with the given context.
-
+    """
+    Executes a dockerfile build with the given context.
     The context path must contain the dockerfile and all dependencies.
     """
     assert tag is not None, 'Image tag cannot be None - have you specified a ' \
                             'task name? '
-    docker_client = docker.from_env()
+    docker_client = docker_adaptor.from_env()
     try:
         unused_image, unused_build_logs = docker_client.images.build(
             path=context_path, tag=tag, rm=True, quiet=False)
-    except docker.build_error() as e:
+    except docker_adaptor.build_error() as e:
+        colorama.init()
         style = colorama.Style
         fore = colorama.Fore
         logger.error(f'{fore.RED}Image build for {tag} failed - are your setup '
@@ -144,9 +141,9 @@ def _execute_build(tag, context_path):
         raise
 
 
-def build_dockerimage(task: task_mod.Task,
-                      tag: str) -> Tuple[str, Dict[str, str]]:
-    """Builds a docker image for the given task.
+def build_dockerimage(task, tag):
+    """
+    Builds a docker image for the given task.
 
     This method is responsible for:
     1. Create a temp directory to set the build context.
@@ -156,24 +153,21 @@ def build_dockerimage(task: task_mod.Task,
     # Get tempdir
     temp_dir = tempfile.mkdtemp(prefix='sky_local_')
 
+    # Add trailing slash to workdir if missing
+    copy_path = os.path.join(task.workdir, '') if task.workdir else task.workdir
+
     # Create dockerfile
-    if callable(task.run):
-        raise ValueError(
-            'Cannot build docker image for a task.run with function.')
     _, img_metadata = create_dockerfile(base_image=task.docker_image,
                                         setup_command=task.setup,
-                                        copy_path=f'{SKY_DOCKER_WORKDIR}/',
+                                        copy_path=copy_path,
                                         run_command=task.run,
                                         build_dir=temp_dir)
 
-    dst = os.path.join(temp_dir, SKY_DOCKER_WORKDIR)
-    if task.workdir is not None:
-        # Copy workdir contents to tempdir
-        shutil.copytree(os.path.expanduser(task.workdir), dst)
-    else:
-        # Create an empty dir
-        os.makedirs(dst)
-
+    # Copy copy_path contents to tempdir
+    if copy_path:
+        copy_dir_name = os.path.basename(os.path.dirname(copy_path))
+        dst = os.path.join(temp_dir, copy_dir_name)
+        shutil.copytree(os.path.expanduser(copy_path), dst)
     logger.info(f'Using tempdir {temp_dir} for docker build.')
 
     # Run docker image build
@@ -185,10 +179,8 @@ def build_dockerimage(task: task_mod.Task,
     return tag, img_metadata
 
 
-def build_dockerimage_from_task(
-        task: task_mod.Task) -> Tuple[str, Dict[str, str]]:
+def build_dockerimage_from_task(task: task_mod.Task):
     """ Builds a docker image from a Task"""
-    assert task.name is not None, task
     tag, img_metadata = build_dockerimage(task, tag=task.name)
     return tag, img_metadata
 
@@ -198,8 +190,8 @@ def push_dockerimage(local_tag, remote_name):
 
 
 def make_bash_from_multiline(codegen: str) -> str:
-    """Makes a bash script from a multi-line string of commands.
-
+    """
+    Makes a bash script from a multi-line string of commands.
     Automatically includes conda setup prefixes.
     Args:
         codegen: str: multiline commands to be converted to a shell script
@@ -210,7 +202,6 @@ def make_bash_from_multiline(codegen: str) -> str:
     script = [
         textwrap.dedent(f"""\
         #!/bin/bash
-        set -e
         {CONDA_SETUP_PREFIX}"""),
         codegen,
     ]

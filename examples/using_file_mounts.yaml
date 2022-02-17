@@ -12,10 +12,6 @@
 resources:
   cloud: aws
 
-workdir: .
-
-num_nodes: 2
-
 # Format for file_mounts:
 #
 #   [ destination on VM ]: [ source, local or cloud ]
@@ -30,11 +26,10 @@ file_mounts:
 
   ~/tmpfile: ~/tmpfile
   ~/a/b/c/tmpfile: ~/tmpfile
-  ~/tmpfile2: ~/tmp-workdir/tmp file
 
   # Intermediate dirs are created and chown-ed to $USER if they don't already
   # exist.  Thus they can be used too, e.g., 'mkdir -p /data/logs'.  See 'run'.
-  /data/checkpoints/best.pt: ~/tmpfile
+  /data/checkpoints/best.pt: ~/tmp
 
   ~/.ssh/id_rsa.pub: ~/.ssh/id_rsa.pub
 
@@ -49,15 +44,14 @@ file_mounts:
   #
   # After syncing the target will be:
   #
-  # /tmp/workdir/
+  # /tmp/data/
   #   a/
   #     b
   #   c
-  /tmp/workdir: ~/tmp-workdir
+  /tmp/data: ~/tmp-workdir
 
   # Relative paths are under ~/ (after sync, ~/relative_dir/ exists).
   relative_dir: ~/tmp-workdir
-  ./dotslash_relative_dir: ~/tmp-workdir
 
   #############################################
   #  Sync from Google Cloud Storage (gsutil)  #
@@ -68,20 +62,13 @@ file_mounts:
   /data/train-00001-of-01024: gs://cloud-tpu-test-datasets/fake_imagenet/train-00001-of-01024
   ~/data/train-00001-of-01024: gs://cloud-tpu-test-datasets/fake_imagenet/train-00001-of-01024
 
-  /s3-data-test: s3://fah-public-data-covid19-cryptic-pockets/human/il6/PROJ14534/RUN999/CLONE0/results0
-  /s3-data-file: s3://fah-public-data-covid19-cryptic-pockets/human/il6/PROJ14534/RUN999/CLONE0/results0/frame0.xtc
-  # Test access to private bucket
-  # /my-bucket: s3://sky-detectron2-outputs
-  # /test-my-gcs: gs://cloud-storage-test-zhwu-2
-
   # If a source path points to a "directory", its contents will be recursively
   # synced (subdirectories included).
   # Commenting out as this takes a while.
   # /data/fake_imagenet: gs://cloud-tpu-test-datasets/fake_imagenet
 
-setup: |
-  sudo apt update
-  sudo apt install -y tree
+# FIXME: apt-get install can not get lock /var/lib/dpkg/lock-frontend
+# setup: 'sudo apt-get install -y tree'
 
 run: |
   set -ex
@@ -93,8 +80,8 @@ run: |
   touch /data/logs/test.log
   touch /data/checkpoints/last.pt
 
-  echo hi >> /tmp/workdir/new_file
-  tree /tmp/workdir
+  echo hi >> /tmp/data/new_file
+  # tree /tmp/data
 
   ls -lthr ~/.ssh
 
@@ -106,25 +93,12 @@ run: |
   ls -lthr ~/.ssh/
 
   ls -lthr ~/
-  ls -lthr ~/sky_workdir/relative_dir
-  ls -lthr ~/sky_workdir/relative_dir/
-  ls -lthr ~/sky_workdir/dotslash_relative_dir/
+  ls -lthr ~/relative_dir
+  ls -lthr ~/relative_dir/
 
   du -schL /train-00001-of-01024
   wc -l /train-00001-of-01024
   ls -l /data/train-00001-of-01024
   ls -l ~/data/train-00001-of-01024
 
-  ls -l /s3-data-test
-  cat /s3-data-file > /dev/null
-
   # ls -lH /data/fake_imagenet | head -n10
-
-  # sky.egg-info/ should not exists on remote due to the .gitingore
-  cd ~/sky_workdir
-  ! ls sky.egg-info/
-
-  # Symlinks should be copied, but they will be broken
-  # Assumes symlink named circle-link in /tmp/workdir (created by test_smoke.py)
-  ls /tmp/workdir/circle-link
-  ! readlink -e /tmp/workdir/circle-link

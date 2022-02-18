@@ -1,7 +1,7 @@
 """GCP cloud adaptors"""
 
 # pylint: disable=import-outside-toplevel
-import functools
+from functools import wraps
 
 googleapiclient = None
 google = None
@@ -9,18 +9,18 @@ google = None
 
 def import_package(func):
 
-    @functools.wraps(func)
+    @wraps(func)
     def wrapper(*args, **kwargs):
         global googleapiclient, google
         if googleapiclient is None or google is None:
             try:
-                import google as _google
                 import googleapiclient as _googleapiclient
+                import google as _google
                 googleapiclient = _googleapiclient
                 google = _google
             except ImportError:
-                raise ImportError('Failed to import dependencies for GCP. '
-                                  'Try: pip install "skypilot[gcp]"') from None
+                raise ImportError('Fail to import dependencies for GCP.'
+                                  'See README for how to install it.') from None
         return func(*args, **kwargs)
 
     return wrapper
@@ -68,17 +68,3 @@ def forbidden_exception():
     """Forbidden exception."""
     from google.api_core import exceptions as gcs_exceptions
     return gcs_exceptions.Forbidden
-
-
-@import_package
-def http_error_exception():
-    """HttpError exception."""
-    from googleapiclient import errors
-    return errors.HttpError
-
-
-@import_package
-def credential_error_exception():
-    """CredentialError exception."""
-    from google.auth import exceptions
-    return exceptions.DefaultCredentialsError

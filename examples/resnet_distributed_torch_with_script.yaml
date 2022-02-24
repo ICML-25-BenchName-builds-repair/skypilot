@@ -7,10 +7,10 @@ resources:
 
 num_nodes: 2
 
-workdir: ./examples/resnet_distributed_torch_scripts
+workdir: .
 
 setup: |
-    bash ./setup.sh
+    bash -i examples/resnet_distributed_torch_scripts/setup.sh
 
 run: |
-    bash ./run.sh
+    bash -i examples/resnet_distributed_torch_scripts/run.sh

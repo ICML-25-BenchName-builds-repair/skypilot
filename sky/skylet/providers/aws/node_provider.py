@@ -1,43 +1,36 @@
 import copy
-import logging
 import threading
-import time
 from collections import defaultdict, OrderedDict
+import logging
+import time
 from typing import Any, Dict, List
 
 import botocore
-from boto3.resources.base import ServiceResource
 
-try:
-    import ray._private.ray_constants as ray_constants
-except ImportError:
-    # SkyPilot: for local ray version lower than 2.0.1
-    import ray.ray_constants as ray_constants
-from sky.skylet.providers.aws.cloudwatch.cloudwatch_helper import (
-    CloudwatchHelper,
-    CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
-    CLOUDWATCH_AGENT_INSTALLED_TAG,
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE,
 )
+from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from sky.skylet.providers.aws.config import bootstrap_aws
+from ray.autoscaler._private.log_timer import LogTimer
+
 from sky.skylet.providers.aws.utils import (
     boto_exception_handler,
     resource_cache,
     client_cache,
 )
-from sky.skylet.providers.command_runner import SkyDockerCommandRunner
-from sky.provision import docker_utils
-
-from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray.autoscaler._private.cli_logger import cli_logger, cf
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
-from ray.autoscaler._private.log_timer import LogTimer
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_NODE_NAME,
-    TAG_RAY_USER_NODE_TYPE,
+import ray.ray_constants as ray_constants
+
+from sky.skylet.providers.aws.cloudwatch.cloudwatch_helper import (
+    CloudwatchHelper,
+    CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
+    CLOUDWATCH_AGENT_INSTALLED_TAG,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +56,7 @@ def from_aws_format(tags):
     return tags
 
 
-def make_ec2_resource(region, max_retries, aws_credentials=None):
+def make_ec2_client(region, max_retries, aws_credentials=None):
     """Make client, retrying requests up to `max_retries`."""
     aws_credentials = aws_credentials or {}
     return resource_cache("ec2", region, max_retries, **aws_credentials)
@@ -74,7 +67,7 @@ def list_ec2_instances(
 ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
     Args:
-        region: the region of the AWS provider. e.g., "us-west-2".
+        region (str): the region of the AWS provider. e.g., "us-west-2".
     Returns:
         final_instance_types: a list of instances. An example of one element in
         the list:
@@ -101,11 +94,6 @@ def list_ec2_instances(
 
 
 class AWSNodeProvider(NodeProvider):
-    """Deprecated for SkyPilot and kept for backward compatibility.
-
-    The cluster launch template has been updated to use AWSNodeProviderV2.
-    """
-
     max_terminate_nodes = 1000
 
     def __init__(self, provider_config, cluster_name):
@@ -113,12 +101,12 @@ class AWSNodeProvider(NodeProvider):
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
         aws_credentials = provider_config.get("aws_credentials")
 
-        self.ec2 = make_ec2_resource(
+        self.ec2 = make_ec2_client(
             region=provider_config["region"],
             max_retries=BOTO_MAX_RETRIES,
             aws_credentials=aws_credentials,
         )
-        self.ec2_fail_fast = make_ec2_resource(
+        self.ec2_fail_fast = make_ec2_client(
             region=provider_config["region"],
             max_retries=0,
             aws_credentials=aws_credentials,
@@ -285,9 +273,10 @@ class AWSNodeProvider(NodeProvider):
                     "Name": "tag:{}".format(TAG_RAY_NODE_KIND),
                     "Values": [tags[TAG_RAY_NODE_KIND]],
                 },
-                # SkyPilot: removed TAG_RAY_LAUNCH_CONFIG to allow reusing nodes
-                # with different launch configs.
-                # Reference: https://github.com/skypilot-org/skypilot/pull/1671
+                {
+                    "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),
+                    "Values": [tags[TAG_RAY_LAUNCH_CONFIG]],
+                },
             ]
             # This tag may not always be present.
             if TAG_RAY_USER_NODE_TYPE in tags:
@@ -297,50 +286,8 @@ class AWSNodeProvider(NodeProvider):
                         "Values": [tags[TAG_RAY_USER_NODE_TYPE]],
                     }
                 )
-            filters_with_launch_config = copy.copy(filters)
-            filters_with_launch_config.append(
-                {
-                    "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),
-                    "Values": [tags[TAG_RAY_LAUNCH_CONFIG]],
-                }
-            )
 
-            # SkyPilot: We try to use the instances with the same matching launch_config first. If
-            # there is not enough instances with matching launch_config, we then use all the
-            # instances with the same matching launch_config plus some instances with wrong
-            # launch_config.
-            nodes_matching_launch_config = list(
-                self.ec2.instances.filter(Filters=filters_with_launch_config)
-            )
-            # launch_time is the latest launch time of the node, rather than the
-            # initial launch time.
-            nodes_matching_launch_config.sort(key=lambda n: n.launch_time, reverse=True)
-            if len(nodes_matching_launch_config) >= count:
-                reuse_nodes = nodes_matching_launch_config[:count]
-            else:
-                nodes_all = list(self.ec2.instances.filter(Filters=filters))
-                nodes_matching_launch_config_ids = set(
-                    n.id for n in nodes_matching_launch_config
-                )
-                nodes_non_matching_launch_config = [
-                    n for n in nodes_all if n.id not in nodes_matching_launch_config_ids
-                ]
-                # This `sort` is for backward compatibility, where the user already has leaked
-                # stopped nodes with the different launch config before update to #1671,
-                # and the total number of the leaked nodes is greater than the number of
-                # nodes to be created. With this, we will make sure we will reuse the
-                # most recently used nodes.
-                # This can be removed in the future when we are sure all the users
-                # have updated to #1671.
-                nodes_non_matching_launch_config.sort(
-                    key=lambda n: n.launch_time, reverse=True
-                )
-                reuse_nodes = (
-                    nodes_matching_launch_config + nodes_non_matching_launch_config
-                )
-                # The total number of reusable nodes can be less than the number of nodes to be created.
-                reuse_nodes = reuse_nodes[:count]
-
+            reuse_nodes = list(self.ec2.instances.filter(Filters=filters))[:count]
             reuse_node_ids = [n.id for n in reuse_nodes]
             reused_nodes_dict = {n.id: n for n in reuse_nodes}
             if reuse_nodes:
@@ -503,11 +450,6 @@ class AWSNodeProvider(NodeProvider):
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == max_tries:
-                    # SkyPilot: do not adopt the changes from upstream in
-                    # https://github.com/ray-project/ray/commit/c2abfdb2f7eee7f3e4320cb0d9e8e3bd639d5680#diff-eeb7bc1d8342583cf12c40536240dbcc67f089466a18a37bd60f187265a2dc94
-                    # which replaces the exception to NodeLaunchException. As we directly
-                    # handle the exception output in
-                    # cloud_vm_ray_backend._update_blocklist_on_aws_error
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
                         exc=exc,
@@ -552,6 +494,7 @@ class AWSNodeProvider(NodeProvider):
         # asyncrhonous or error, which would result in a use after free error.
         # If this leak becomes bad, we can garbage collect the tag cache when
         # the node cache is updated.
+        pass
 
     def _check_ami_cwa_installation(self, config):
         response = self.ec2.meta.client.describe_images(ImageIds=[config["ImageId"]])
@@ -717,50 +660,3 @@ class AWSNodeProvider(NodeProvider):
                     + "."
                 )
         return cluster_config
-
-    def get_command_runner(
-        self,
-        log_prefix,
-        node_id,
-        auth_config,
-        cluster_name,
-        process_runner,
-        use_internal_ip,
-        docker_config=None,
-    ):
-        common_args = {
-            "log_prefix": log_prefix,
-            "node_id": node_id,
-            "provider": self,
-            "auth_config": auth_config,
-            "cluster_name": cluster_name,
-            "process_runner": process_runner,
-            "use_internal_ip": use_internal_ip,
-        }
-        if docker_config and docker_config["container_name"] != "":
-            if "docker_login_config" in self.provider_config:
-                docker_config["docker_login_config"] = docker_utils.DockerLoginConfig(
-                    **self.provider_config["docker_login_config"]
-                )
-            return SkyDockerCommandRunner(docker_config, **common_args)
-        else:
-            return SSHCommandRunner(**common_args)
-
-
-class AWSNodeProviderV2(AWSNodeProvider):
-    """Same as V1, except head and workers use a SkyPilot IAM role.
-
-    The new version of the AWS node provider supports AWS SSO
-    (see #1489), by using a new IAM role with different permissions
-    than the original ray-autoscaler-v1 for both the head node and
-    worker nodes.
-
-    We did not overwrite the original AWSNodeProvider class to avoid
-    breaking existing clusters. Otherwise, the existing clusters will
-    have a new launch_hash and will have new node(s) launched, causing
-    the existing nodes to leak.
-    """
-
-    @staticmethod
-    def bootstrap_config(cluster_config):
-        return bootstrap_aws(cluster_config, skypilot_iam_role=True)

@@ -1,5 +1,4 @@
-# Distributed training example with managed spot job + automatic
-# checkpoint/restore.
+# Distributed training example with sky spot + automatic checkpoint/restore
 #
 # Creates a shared s3 mount across workers that is used to read and write
 # checkpoints. Save checkpoints every 10 epochs.
@@ -46,9 +45,9 @@ run: |
     # modify your run id for each different run!
     run_id="resnet-run-1"
 
-    num_nodes=`echo "$SKYPILOT_NODE_IPS" | wc -l`
-    master_addr=`echo "$SKYPILOT_NODE_IPS" | head -n1`
+    num_nodes=`echo "$SKY_NODE_IPS" | wc -l`
+    master_addr=`echo "$SKY_NODE_IPS" | head -n1`
     python3 -m torch.distributed.launch --nproc_per_node=1 \
-    --nnodes=$num_nodes --node_rank=${SKYPILOT_NODE_RANK} --master_addr=$master_addr \
+    --nnodes=$num_nodes --node_rank=${SKY_NODE_RANK} --master_addr=$master_addr \
     --master_port=8008 resnet_ddp.py --num_epochs 100000 --model_dir /checkpoint/torch_ddp_resnet/ \
     --resume --model_filename resnet_distributed-with-epochs.pth --run_id $run_id --wandb_dir /checkpoint/

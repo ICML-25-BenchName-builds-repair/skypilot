@@ -137,6 +137,10 @@ class Task:
         self.time_estimator_func = None
         self.file_mounts = None
 
+        # Only set when 'self' is a spot controller task: 'self.spot_task' is
+        # the underlying managed spot task (Task object).
+        self.spot_task = None
+
         # Filled in by the optimizer.  If None, this Task is not planned.
         self.best_resources = None
 

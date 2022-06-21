@@ -1,20 +1,7 @@
 """Utility functions for UX."""
 import contextlib
+import functools
 import sys
-
-import rich.console as rich_console
-
-from sky.utils import env_options
-
-console = rich_console.Console()
-
-
-def console_newline():
-    """Print a newline to the console using rich.
-
-    Useful when catching exceptions inside console.status()
-    """
-    console.print()
 
 
 @contextlib.contextmanager
@@ -24,32 +11,33 @@ def print_exception_no_traceback():
     Mainly for UX: user-facing errors, e.g., ValueError, should suppress long
     tracebacks.
 
-    If SKYPILOT_DEBUG environment variable is set, this context manager is a
-    no-op and the full traceback will be shown.
-
     Example usage:
 
         with print_exception_no_traceback():
             if error():
                 raise ValueError('...')
     """
-    if env_options.Options.SHOW_DEBUG_INFO.get():
-        # When SKYPILOT_DEBUG is set, show the full traceback
-        yield
-    else:
-        original_tracelimit = getattr(sys, 'tracebacklimit', 1000)
-        sys.tracebacklimit = 0
-        yield
-        sys.tracebacklimit = original_tracelimit
-
-
-@contextlib.contextmanager
-def enable_traceback():
-    """Revert the effect of print_exception_no_traceback().
-
-    This is used for usage_lib to collect the full traceback.
-    """
     original_tracelimit = getattr(sys, 'tracebacklimit', 1000)
-    sys.tracebacklimit = 1000
+    sys.tracebacklimit = 0
     yield
     sys.tracebacklimit = original_tracelimit
+
+
+def print_exception_no_traceback_decorator(func):
+    """A decorator that prints out an exception without traceback.
+
+    It makes print_exception_no_traceback() a decorator for a function.
+
+    Example usage:
+
+        @print_exception_no_traceback_decorator
+        def func():
+            raise Error('...')
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with print_exception_no_traceback():
+            return func(*args, **kwargs)
+
+    return wrapper

@@ -3,14 +3,15 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-from typing import List, NamedTuple, Optional, Tuple
+from typing import List, Optional, Tuple, NamedTuple
 
-from click import testing as cli_testing
 import colorama
+from click import testing as cli_testing
 import pytest
 import yaml
 
 from sky import cli
+from sky import exceptions
 from sky.utils import command_runner
 from sky.utils import subprocess_utils
 
@@ -212,9 +213,9 @@ class TestOnprem:
         test = Test(
             'test_onprem_inline_commands',
             [
-                f'sky launch -c {name} -y --env TEST_ENV="hello world" -- "([[ ! -z \\"\$TEST_ENV\\" ]] && [[ ! -z \\"\$SKYPILOT_NODE_IPS\\" ]] && [[ ! -z \\"\$SKYPILOT_NODE_RANK\\" ]]) || exit 1"',
+                f'sky launch -c {name} -y --env TEST_ENV="hello world" -- "([[ ! -z \\"\$TEST_ENV\\" ]] && [[ ! -z \\"\$SKY_NODE_IPS\\" ]] && [[ ! -z \\"\$SKY_NODE_RANK\\" ]]) || exit 1"',
                 f'sky logs {name} 1 --status',
-                f'sky exec {name} --env TEST_ENV2="success" "([[ ! -z \\"\$TEST_ENV2\\" ]] && [[ ! -z \\"\$SKYPILOT_NODE_IPS\\" ]] && [[ ! -z \\"\$SKYPILOT_NODE_RANK\\" ]]) || exit 1"',
+                f'sky exec {name} --env TEST_ENV2="success" "([[ ! -z \\"\$TEST_ENV2\\" ]] && [[ ! -z \\"\$SKY_NODE_IPS\\" ]] && [[ ! -z \\"\$SKY_NODE_RANK\\" ]]) || exit 1"',
                 f'sky logs {name} 2 --status',
             ],
             # Cleaning up artifacts created from the test.
@@ -235,8 +236,8 @@ class TestOnprem:
                     set -e
                     echo $(whoami)
                     pkill -f ray
-                    echo NODE ID: $SKYPILOT_NODE_RANK
-                    echo NODE IPS: "$SKYPILOT_NODE_IPS"
+                    echo NODE ID: $SKY_NODE_RANK
+                    echo NODE IPS: "$SKY_NODE_IPS"
                     exit 0""")
         }
 
@@ -276,7 +277,7 @@ class TestOnprem:
                 f'sky exec {name} -d -- "echo hi"',
                 f'sky cancel {name} 5',
                 f'sky logs {name} 1',
-                f's=$(sky queue {name}); printf "$s"; echo; echo; printf "$s" | grep "^5\\b" | grep CANCELLED',
+                f'sky queue {name} | grep "^5\\b" | grep CANCELLED',
             ],
             # Cleaning up artifacts created from the test.
             f'sky down -y {name}; rm -f ~/.sky/local/{name}.yml',
@@ -302,12 +303,12 @@ class TestOnprem:
                 f'sky exec {second_cluster_name} -d -- "sleep 300"',
                 f'sky cancel {first_cluster_name} 2',
                 'sleep 5',
-                f's=$(sky queue {first_cluster_name}); printf "$s"; echo; echo; printf "$s" | grep "^2\\b" | grep CANCELLED',
+                f'sky queue {first_cluster_name} | grep "^2\\b" | grep CANCELLED',
                 # User 1 should not cancel user 2's jobs.
-                f's=$(sky queue {second_cluster_name}); printf "$s"; echo; echo; printf "$s" | grep "^2\\b" | grep -v CANCELLED',
+                f'sky queue {second_cluster_name} | grep "^2\\b" | grep -v CANCELLED',
                 f'sky cancel {second_cluster_name} 2',
                 f'sleep 5',
-                f's=$(sky queue {second_cluster_name}); printf "$s"; echo; echo; printf "$s" | grep "^2\\b" | grep CANCELLED',
+                f'sky queue {second_cluster_name} | grep "^2\\b" | grep CANCELLED',
                 f'sky logs {first_cluster_name} 1',
                 f'sky logs {second_cluster_name} 1'
             ],

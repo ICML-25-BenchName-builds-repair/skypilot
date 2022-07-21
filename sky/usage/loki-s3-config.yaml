@@ -2,8 +2,6 @@ auth_enabled: false
 
 server:
   http_listen_port: 9090
-  http_server_read_timeout: 300s
-  http_server_write_timeout: 300s
 
 schema_config:
   configs:
@@ -41,9 +39,6 @@ storage_config:
     shared_store: s3
     cache_location: /loki/boltdb-cache
 
-querier:
-  query_timeout: 10m
-  max_concurrent: 32
 query_scheduler:
   max_outstanding_requests_per_tenant: 4096
 frontend:
@@ -52,12 +47,10 @@ query_range:
   parallelise_shardable_queries: true
 
 limits_config:
-  max_query_series: 5000
   ingestion_rate_strategy: local # Default: global
   max_global_streams_per_user: 5000
   max_query_length: 0h # Default: 721h
   max_query_parallelism: 32 # Old Default: 14
-  max_entries_limit_per_query: 1000000
   max_streams_per_user: 0 # Old Default: 10000
   reject_old_samples: true
   reject_old_samples_max_age: 168h
@@ -72,4 +65,3 @@ chunk_store_config:
 table_manager:
   retention_deletes_enabled: false
   retention_period: 0s
-

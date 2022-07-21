@@ -1,36 +1,65 @@
-"""Logging events to Grafana Loki."""
+"""Logging events to Grafana Loki"""
 
+import enum
+import click
 import contextlib
 import datetime
-import enum
+import hashlib
 import inspect
 import json
 import os
 import time
 import traceback
 import typing
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
+import uuid
 
-import click
 import requests
 
-import sky
 from sky import sky_logging
 from sky.usage import constants
 from sky.utils import common_utils
 from sky.utils import env_options
-from sky.utils import ux_utils
 
 if typing.TYPE_CHECKING:
+    from sky import global_user_state
     from sky import resources as resources_lib
-    from sky import status_lib
     from sky import task as task_lib
 
 logger = sky_logging.init_logger(__name__)
 
+# An indicator for PRIVACY_POLICY has already been shown.
+privacy_policy_indicator = os.path.expanduser(constants.PRIVACY_POLICY_PATH)
+if not env_options.Options.DISABLE_LOGGING.get():
+    os.makedirs(os.path.dirname(privacy_policy_indicator), exist_ok=True)
+    try:
+        with open(privacy_policy_indicator, 'x'):
+            click.secho(constants.USAGE_POLICY_MESSAGE, fg='yellow')
+    except FileExistsError:
+        pass
+
+_run_id = None
+
+
+def _get_logging_run_id():
+    """Returns a unique run id for this logging."""
+    global _run_id
+    if _run_id is None:
+        _run_id = str(uuid.uuid4())
+    return _run_id
+
 
 def _get_current_timestamp_ns() -> int:
     return int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1e9)
+
+
+def get_logging_user_hash():
+    """Returns a unique user-machine specific hash as a user id."""
+    user_id = os.getenv(constants.USAGE_USER_ENV)
+    if user_id and len(user_id) == 8:
+        return user_id
+    hash_str = common_utils.user_and_hostname_hash()
+    return hashlib.md5(hash_str.encode()).hexdigest()[:8]
 
 
 class MessageType(enum.Enum):
@@ -42,14 +71,14 @@ class MessageType(enum.Enum):
 class MessageToReport:
     """Abstract class for messages to be sent to Loki."""
 
-    def __init__(self, schema_version: int):
+    def __init__(self, schema_version: str):
         self.schema_version = schema_version
-        self.start_time: Optional[int] = None
-        self.send_time: Optional[int] = None
+        self.start_time: int = None
+        self.send_time: int = None
 
     def start(self):
         if self.start_time is None:
-            self.start_time = _get_current_timestamp_ns()
+            self.start_time: int = _get_current_timestamp_ns()
 
     @property
     def message_sent(self):
@@ -69,10 +98,8 @@ class UsageMessageToReport(MessageToReport):
     def __init__(self) -> None:
         super().__init__(constants.USAGE_MESSAGE_SCHEMA_VERSION)
         # Message identifier.
-        self.user: str = common_utils.get_user_hash()
-        self.run_id: str = common_utils.get_usage_run_id()
-        self.sky_version: str = sky.__version__
-        self.sky_commit: str = sky.__commit__
+        self.user: str = get_logging_user_hash()
+        self.run_id: str = _get_logging_run_id()
 
         # Entry
         self.cmd: str = common_utils.get_pretty_entry_point()
@@ -89,8 +116,6 @@ class UsageMessageToReport(MessageToReport):
         self.cloud: Optional[str] = None  # update_cluster_resources
         #: The final region of the cluster.
         self.region: Optional[str] = None  # update_cluster_resources
-        #: The final zone of the cluster.
-        self.zone: Optional[str] = None  # update_cluster_resources
         #: The final instance_type of the cluster.
         self.instance_type: Optional[str] = None  # update_cluster_resources
         #: The final accelerators the cluster.
@@ -103,8 +128,8 @@ class UsageMessageToReport(MessageToReport):
         self.resources: Optional[Dict[str,
                                       Any]] = None  # update_cluster_resources
         #: Resources of the local cluster.
-        self.local_resources: Optional[List[Dict[
-            str, Any]]] = None  # update_local_cluster_resources
+        self.local_resources: Optional[Dict[
+            str, Any]] = None  # update_local_cluster_resources
         #: The number of nodes in the cluster.
         self.num_nodes: Optional[int] = None  # update_cluster_resources
         #: The status of the cluster.
@@ -117,15 +142,12 @@ class UsageMessageToReport(MessageToReport):
         #: Whether the cluster is newly launched.
         self.is_new_cluster: bool = False  # set_new_cluster
 
-        self.task_id: Optional[int] = None  # update_task_id
         # Task requested
         #: The number of nodes requested by the task.
         #: Requested cloud
         self.task_cloud: Optional[str] = None  # update_actual_task
         #: Requested region
         self.task_region: Optional[str] = None  # update_actual_task
-        #: Requested zone
-        self.task_zone: Optional[str] = None  # update_actual_task
         #: Requested instance_type
         self.task_instance_type: Optional[str] = None  # update_actual_task
         #: Requested accelerators
@@ -140,15 +162,12 @@ class UsageMessageToReport(MessageToReport):
         #: Requested number of nodes
         self.task_num_nodes: Optional[int] = None  # update_actual_task
         # YAMLs converted to JSON.
-        self.user_task_yaml: Optional[List[Dict[
-            str, Any]]] = None  # update_user_task_yaml
-        self.actual_task: Optional[List[Dict[str,
-                                             Any]]] = None  # update_actual_task
+        self.user_task_yaml: Optional[str] = None  # update_user_task_yaml
+        self.actual_task: Optional[Dict[str, Any]] = None  # update_actual_task
         self.ray_yamls: Optional[List[Dict[str, Any]]] = None
         #: Number of Ray YAML files.
         self.num_tried_regions: Optional[int] = None  # update_ray_yaml
-        self.runtimes: Dict[str, float] = {}  # update_runtime
-        self.exception: Optional[str] = None  # entrypoint_context
+        self.runtimes: Dict[str, int] = {}  # update_runtime
         self.stacktrace: Optional[str] = None  # entrypoint_context
 
     def __repr__(self) -> str:
@@ -178,7 +197,6 @@ class UsageMessageToReport(MessageToReport):
 
             self.task_cloud = str(resources.cloud)
             self.task_region = resources.region
-            self.task_zone = resources.zone
             self.task_instance_type = resources.instance_type
             self.task_use_spot = resources.use_spot
             # Update accelerators.
@@ -191,13 +209,10 @@ class UsageMessageToReport(MessageToReport):
                 self.task_num_accelerators = resources.accelerators[
                     self.task_accelerators]
 
-    def update_task_id(self, task_id: int):
-        self.task_id = task_id
-
     def update_ray_yaml(self, yaml_config_or_path: Union[Dict, str]):
         if self.ray_yamls is None:
             self.ray_yamls = []
-        self.ray_yamls.extend(
+        self.ray_yamls.append(
             prepare_json_from_yaml_config(yaml_config_or_path))
         self.num_tried_regions = len(self.ray_yamls)
 
@@ -212,7 +227,6 @@ class UsageMessageToReport(MessageToReport):
                                  resources: 'resources_lib.Resources'):
         self.cloud = str(resources.cloud)
         self.region = resources.region
-        self.zone = resources.zone
         self.instance_type = resources.instance_type
         self.use_spot = resources.use_spot
 
@@ -233,7 +247,7 @@ class UsageMessageToReport(MessageToReport):
         self.local_resources = [r.to_yaml_config() for r in local_resources]
 
     def update_cluster_status(
-            self, original_status: Optional['status_lib.ClusterStatus']):
+            self, original_status: Optional['global_user_state.ClusterStatus']):
         status = original_status.value if original_status else None
         if not self._original_cluster_status_specified:
             self.original_cluster_status = status
@@ -241,7 +255,7 @@ class UsageMessageToReport(MessageToReport):
         self.final_cluster_status = status
 
     def update_final_cluster_status(
-            self, status: Optional['status_lib.ClusterStatus']):
+            self, status: Optional['global_user_state.ClusterStatus']):
         self.final_cluster_status = status.value if status is not None else None
 
     def set_new_cluster(self):
@@ -249,8 +263,8 @@ class UsageMessageToReport(MessageToReport):
 
     @contextlib.contextmanager
     def update_runtime_context(self, name: str):
-        start = time.time()
         try:
+            start = time.time()
             yield
         finally:
             self.runtimes[name] = time.time() - start
@@ -319,7 +333,7 @@ def _send_to_loki(message_type: MessageType):
     messages.reset(message_type)
 
 
-def _clean_yaml(yaml_info: Dict[str, Optional[str]]):
+def _clean_yaml(yaml_info: Dict[str, str]):
     """Remove sensitive information from user YAML."""
     cleaned_yaml_info = yaml_info.copy()
     for redact_type in constants.USAGE_MESSAGE_REDACT_KEYS:
@@ -354,23 +368,19 @@ def _clean_yaml(yaml_info: Dict[str, Optional[str]]):
     return cleaned_yaml_info
 
 
-def prepare_json_from_yaml_config(
-        yaml_config_or_path: Union[Dict, str]) -> List[Dict[str, Any]]:
+def prepare_json_from_yaml_config(yaml_config_or_path: Union[Dict, str]):
     """Upload safe contents of YAML file to Loki."""
     if isinstance(yaml_config_or_path, dict):
-        yaml_info = [yaml_config_or_path]
+        yaml_info = yaml_config_or_path
         comment_lines = []
     else:
         with open(yaml_config_or_path, 'r') as f:
             lines = f.readlines()
             comment_lines = [line for line in lines if line.startswith('#')]
-        yaml_info = common_utils.read_yaml_all(yaml_config_or_path)
+        yaml_info = common_utils.read_yaml(yaml_config_or_path)
 
-    for i in range(len(yaml_info)):
-        if yaml_info[i] is None:
-            yaml_info[i] = {}
-        yaml_info[i] = _clean_yaml(yaml_info[i])
-        yaml_info[i]['__redacted_comment_lines'] = len(comment_lines)
+    yaml_info = _clean_yaml(yaml_info)
+    yaml_info['__redacted_comment_lines'] = len(comment_lines)
     return yaml_info
 
 
@@ -398,17 +408,6 @@ def entrypoint_context(name: str, fallback: bool = False):
     additional entrypoint_context with fallback=True can be used to wrap
     the global entrypoint to catch any exceptions that are not caught.
     """
-    # Show the policy message only when the entrypoint is used.
-    # An indicator for PRIVACY_POLICY has already been shown.
-    privacy_policy_indicator = os.path.expanduser(constants.PRIVACY_POLICY_PATH)
-    if not env_options.Options.DISABLE_LOGGING.get():
-        os.makedirs(os.path.dirname(privacy_policy_indicator), exist_ok=True)
-        try:
-            with open(privacy_policy_indicator, 'x'):
-                click.secho(constants.USAGE_POLICY_MESSAGE, fg='yellow')
-        except FileExistsError:
-            pass
-
     is_entry = messages.usage.entrypoint is None
     if is_entry and not fallback:
         for message in messages.values():
@@ -421,14 +420,9 @@ def entrypoint_context(name: str, fallback: bool = False):
     # Should be the outermost entrypoint or the fallback entrypoint.
     try:
         yield
-    except (Exception, SystemExit, KeyboardInterrupt) as e:
-        with ux_utils.enable_traceback():
-            trace = traceback.format_exc()
-            messages.usage.stacktrace = trace
-            if hasattr(e, 'detailed_reason') and e.detailed_reason is not None:
-                messages.usage.stacktrace += '\nDetails: ' + e.detailed_reason
-            messages.usage.exception = common_utils.remove_color(
-                common_utils.format_exception(e))
+    except (Exception, SystemExit, KeyboardInterrupt):
+        trace = traceback.format_exc()
+        messages.usage.stacktrace = trace
         raise
     finally:
         if fallback:
@@ -436,28 +430,7 @@ def entrypoint_context(name: str, fallback: bool = False):
         _send_local_messages()
 
 
-def entrypoint(name_or_fn: Union[str, Callable], fallback: bool = False):
+def entrypoint(name_or_fn: str, fallback: bool = False):
     return common_utils.make_decorator(entrypoint_context,
                                        name_or_fn,
                                        fallback=fallback)
-
-
-# Convenience methods below.
-
-
-def record_cluster_name_for_current_operation(
-        cluster_name: Union[List[str], str]) -> None:
-    """Records cluster name(s) for the current operation.
-
-    Usage:
-
-       def op():  # CLI or programmatic API
-
-           ...validate errors...
-
-           usage_lib.record_cluster_name_for_current_operation(
-              <actual clusters being operated on>)
-
-           do_actual_op()
-    """
-    messages.usage.update_cluster_name(cluster_name)

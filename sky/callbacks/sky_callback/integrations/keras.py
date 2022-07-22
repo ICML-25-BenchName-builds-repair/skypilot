@@ -1,10 +1,9 @@
 """SkyCallback integration with Keras."""
 from typing import Dict, Optional
 
-from tensorflow import keras
 import tensorflow as tf
+from tensorflow import keras
 
-# isort: split
 from sky_callback import base
 from sky_callback import utils
 

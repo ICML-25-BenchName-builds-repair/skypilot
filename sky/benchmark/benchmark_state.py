@@ -133,8 +133,9 @@ def add_benchmark(benchmark_name: str, task_name: Optional[str],
     _BENCHMARK_DB.conn.commit()
 
 
-def add_benchmark_result(benchmark_name: str,
-                         cluster_handle: 'backend_lib.ResourceHandle') -> None:
+def add_benchmark_result(
+        benchmark_name: str,
+        cluster_handle: 'backend_lib.Backend.ResourceHandle') -> None:
     name = cluster_handle.cluster_name
     num_nodes = cluster_handle.launched_nodes
     resources = pickle.dumps(cluster_handle.launched_resources)

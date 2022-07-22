@@ -2,6 +2,7 @@
 from typing import Any, Optional
 
 import pytorch_lightning as pl
+
 from sky_callback import base
 from sky_callback import utils
 

@@ -16,6 +16,7 @@ import uuid
 
 import colorama
 import prettytable
+from rich import console as rich_console
 from rich import progress as rich_progress
 
 import sky
@@ -23,15 +24,12 @@ from sky import backends
 from sky import data
 from sky import global_user_state
 from sky import sky_logging
-from sky import status_lib
 from sky.backends import backend_utils
 from sky.benchmark import benchmark_state
-from sky.skylet import constants
 from sky.skylet import job_lib
 from sky.skylet import log_lib
+from sky.skylet.utils import log_utils
 from sky.utils import common_utils
-from sky.utils import log_utils
-from sky.utils import rich_utils
 from sky.utils import subprocess_utils
 from sky.utils import ux_utils
 
@@ -39,7 +37,9 @@ if typing.TYPE_CHECKING:
     from sky import resources as resources_lib
 
 logger = sky_logging.init_logger(__name__)
+console = rich_console.Console()
 
+_SKY_LOGS_DIRECTORY = job_lib.SKY_LOGS_DIRECTORY
 _SKY_LOCAL_BENCHMARK_DIR = os.path.expanduser('~/.sky/benchmarks')
 _SKY_REMOTE_BENCHMARK_DIR = '~/.sky/sky_benchmark_dir'
 # NOTE: This must be the same as _SKY_REMOTE_BENCHMARK_DIR
@@ -114,14 +114,8 @@ def _print_candidate_resources(
                 f'{colorama.Style.RESET_ALL}')
 
     columns = [
-        'CLUSTER',
-        'CLOUD',
-        '# NODES',
-        'INSTANCE',
-        'vCPUs',
-        'Mem(GB)',
-        'ACCELERATORS',
-        'PRICE ($/hr)',
+        'CLUSTER', 'CLOUD', '# NODES', 'INSTANCE', 'ACCELERATORS',
+        'PRICE ($/hr)'
     ]
     table_kwargs = {
         'hrules': prettytable.FRAME,
@@ -136,25 +130,11 @@ def _print_candidate_resources(
         else:
             accelerator, count = list(resources.accelerators.items())[0]
             accelerators = f'{accelerator}:{count}'
-        cloud = resources.cloud
-        vcpus, mem = cloud.get_vcpus_mem_from_instance_type(
-            resources.instance_type)
-
-        def format_number(x):
-            if x is None:
-                return '-'
-            elif x.is_integer():
-                return str(int(x))
-            else:
-                return f'{x:.1f}'
-
-        vcpus = format_number(vcpus)
-        mem = format_number(mem)
         cost = num_nodes * resources.get_cost(3600)
         spot = '[Spot]' if resources.use_spot else ''
         row = [
-            cluster, cloud, num_nodes, resources.instance_type + spot, vcpus,
-            mem, accelerators, f'{cost:.2f}'
+            cluster, resources.cloud, num_nodes, resources.instance_type + spot,
+            accelerators, f'{cost:.2f}'
         ]
         candidate_table.add_row(row)
     logger.info(f'{candidate_table}\n')
@@ -223,7 +203,7 @@ def _launch_with_log_suppress_exception(
             log_path=os.path.join(log_dir, f'{cluster}.log'),
             stream_logs=True,
             streaming_prefix=prefix,
-            start_streaming_at='Creating a new cluster: ',
+            start_streaming_at='Creating a new cluster: "',
             skip_lines=[
                 'Tip: to reuse an existing cluster, specify --cluster (-c).',
             ],
@@ -313,21 +293,21 @@ def _update_benchmark_result(benchmark_result: Dict[str, Any]) -> Optional[str]:
         backend = backend_utils.get_backend_from_handle(handle)
         assert isinstance(backend, backends.CloudVmRayBackend)
 
-        if cluster_status == status_lib.ClusterStatus.UP:
+        if cluster_status == global_user_state.ClusterStatus.UP:
             # NOTE: The id of the benchmarking job must be 1.
             # TODO(woosuk): Handle exceptions.
             job_status = backend.get_job_status(handle,
-                                                job_ids=[1],
-                                                stream_logs=False)[1]
+                                                job_id=1,
+                                                stream_logs=False)
 
     # Update the benchmark status.
-    if (cluster_status == status_lib.ClusterStatus.INIT or
-            job_status < job_lib.JobStatus.RUNNING):
+    if (cluster_status == global_user_state.ClusterStatus.INIT or
+            job_status in [job_lib.JobStatus.INIT, job_lib.JobStatus.PENDING]):
         benchmark_status = benchmark_state.BenchmarkStatus.INIT
     elif job_status == job_lib.JobStatus.RUNNING:
         benchmark_status = benchmark_state.BenchmarkStatus.RUNNING
     elif (cluster_status is None or
-          cluster_status == status_lib.ClusterStatus.STOPPED or
+          cluster_status == global_user_state.ClusterStatus.STOPPED or
           (job_status is not None and job_status.is_terminal())):
         # The cluster has terminated or stopped, or
         # the cluster is UP and the job has terminated.
@@ -509,7 +489,7 @@ def launch_benchmark_clusters(benchmark: str, clusters: List[str],
 
     # Save stdout/stderr from cluster launches.
     run_timestamp = backend_utils.get_run_timestamp()
-    log_dir = os.path.join(constants.SKY_LOGS_DIRECTORY, run_timestamp)
+    log_dir = os.path.join(_SKY_LOGS_DIRECTORY, run_timestamp)
     log_dir = os.path.expanduser(log_dir)
     logger.info(
         f'{colorama.Fore.YELLOW}To view stdout/stderr from individual '
@@ -568,7 +548,7 @@ def update_benchmark_state(benchmark: str) -> None:
     remote_dir = os.path.join(bucket_name, benchmark)
     local_dir = os.path.join(_SKY_LOCAL_BENCHMARK_DIR, benchmark)
     os.makedirs(local_dir, exist_ok=True)
-    with rich_utils.safe_status('[bold cyan]Downloading benchmark logs[/]'):
+    with console.status('[bold cyan]Downloading benchmark logs[/]'):
         _download_remote_dir(remote_dir, local_dir, bucket_type)
 
     # Update the benchmark results in parallel.

@@ -1,13 +1,13 @@
-"""Logging utils."""
+"""Sky logging utils."""
 import enum
 from typing import List, Optional
 
 import colorama
 import pendulum
 import prettytable
+import rich.status
 
 from sky import sky_logging
-from sky.utils import rich_utils
 
 logger = sky_logging.init_logger(__name__)
 
@@ -32,30 +32,19 @@ class RayUpLineProcessor(LineProcessor):
     class ProvisionStatus(enum.Enum):
         LAUNCH = 0
         RUNTIME_SETUP = 1
-        PULLING_DOCKER_IMAGES = 2
 
     def __enter__(self):
         self.state = self.ProvisionStatus.LAUNCH
-        self.status_display = rich_utils.safe_status('[bold cyan]Launching')
+        self.status_display = rich.status.Status('[bold cyan]Launching')
         self.status_display.start()
 
     def process_line(self, log_line):
-        if ('Success.' in log_line and
+        if ('Shared connection to' in log_line and
                 self.state == self.ProvisionStatus.LAUNCH):
+            self.status_display.stop()
             logger.info(f'{colorama.Fore.GREEN}Head node is up.'
                         f'{colorama.Style.RESET_ALL}')
-            self.status_display.update(
-                '[bold cyan]Launching - Preparing SkyPilot runtime')
-            self.state = self.ProvisionStatus.RUNTIME_SETUP
-        if ('Pulling from' in log_line and
-                self.state == self.ProvisionStatus.RUNTIME_SETUP):
-            self.status_display.update(
-                '[bold cyan]Launching - Pulling docker images')
-            self.state = self.ProvisionStatus.PULLING_DOCKER_IMAGES
-        if ('Status: Downloaded newer image' in log_line and
-                self.state == self.ProvisionStatus.PULLING_DOCKER_IMAGES):
-            logger.info(f'{colorama.Fore.GREEN}Docker image is downloaded.'
-                        f'{colorama.Style.RESET_ALL}')
+            self.status_display.start()
             self.status_display.update(
                 '[bold cyan]Launching - Preparing SkyPilot runtime')
             self.state = self.ProvisionStatus.RUNTIME_SETUP
@@ -78,8 +67,8 @@ def create_table(field_names: List[str], **kwargs) -> prettytable.PrettyTable:
     return table
 
 
-def readable_time_duration(start: Optional[float],
-                           end: Optional[float] = None,
+def readable_time_duration(start: Optional[int],
+                           end: Optional[int] = None,
                            absolute: bool = False) -> str:
     """Human readable time duration from timestamps.
 
@@ -96,8 +85,6 @@ def readable_time_duration(start: Optional[float],
     # It is only used in spot_utils.show_jobs() for job duration calculation.
     if start is None or start < 0:
         return '-'
-    if end == start == 0:
-        return '-'
     if end is not None:
         end = pendulum.from_timestamp(end)
     start_time = pendulum.from_timestamp(start)
@@ -112,12 +99,6 @@ def readable_time_duration(start: Optional[float],
         diff = diff.replace(' minute', 'm')
         diff = diff.replace(' hours', 'h')
         diff = diff.replace(' hour', 'h')
-        diff = diff.replace(' days', 'd')
-        diff = diff.replace(' day', 'd')
-        diff = diff.replace(' weeks', 'w')
-        diff = diff.replace(' week', 'w')
-        diff = diff.replace(' months', 'mo')
-        diff = diff.replace(' month', 'mo')
     else:
         diff = start_time.diff_for_humans(end)
         if duration.in_seconds() < 1:

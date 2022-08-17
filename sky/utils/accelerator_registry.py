@@ -12,10 +12,7 @@ from sky.utils import ux_utils
 # The list is simply an optimization to short-circuit the search in the catalog.
 # If the name is not found in the list, it will be searched in the catalog
 # with its case being ignored. If a match is found, the name will be
-# canonicalized to that in the catalog. Note that this lookup can be an
-# expensive operation, as it requires reading the catalog or making external
-# API calls (such as for Kubernetes). Thus it is desirable to keep this list
-# up-to-date with commonly used accelerators.
+# canonicalized to that in the catalog.
 # 3. (For SkyPilot dev) What to do if I want to add a new accelerator?
 # Append its case-sensitive canonical name to this list. The name must match
 # `AcceleratorName` in the service catalog, or what we define in
@@ -40,7 +37,6 @@ _ACCELERATORS = [
     'P40',
     'Radeon MI25',
     'P4',
-    'L4',
 ]
 
 
@@ -78,7 +74,7 @@ def canonicalize_accelerator_name(accelerator: str) -> str:
     # Currenlty unreachable.
     # This can happen if catalogs have the same accelerator with
     # different names (e.g., A10g and A10G).
-    assert len(names) > 1
-    with ux_utils.print_exception_no_traceback():
-        raise ValueError(f'Accelerator name {accelerator!r} is ambiguous. '
-                         f'Please choose one of {names}.')
+    if len(names) > 1:
+        with ux_utils.print_exception_no_traceback():
+            raise ValueError(f'Accelerator name {accelerator} is ambiguous. '
+                             f'Please choose one of {names}.')

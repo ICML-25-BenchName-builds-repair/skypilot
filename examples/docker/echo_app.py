@@ -8,9 +8,8 @@
 #   python echo_app.py
 
 import random
-import string
-
 import sky
+import string
 
 with sky.Dag() as dag:
     # The setup command to build the container image

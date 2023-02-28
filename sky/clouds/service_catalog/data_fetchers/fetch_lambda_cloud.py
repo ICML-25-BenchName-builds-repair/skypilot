@@ -11,13 +11,12 @@ import argparse
 import csv
 import json
 import os
-
 import requests
 
 ENDPOINT = 'https://cloud.lambdalabs.com/api/v1/instance-types'
 DEFAULT_LAMBDA_KEYS_PATH = os.path.expanduser('~/.lambda_cloud/lambda_keys')
 
-# List of all possible regions.
+# This is the list that Lambda Labs gave us.
 REGIONS = [
     'australia-southeast-1',
     'europe-central-1',
@@ -30,8 +29,6 @@ REGIONS = [
     'us-west-2',
     'us-west-1',
     'us-south-1',
-    'us-west-3',
-    'us-midwest-1',
 ]
 
 # Source: https://lambdalabs.com/service/gpu-cloud
@@ -42,7 +39,6 @@ GPU_TO_MEMORY = {
     'A10': 24576,
     'RTX6000': 24576,
     'V100': 16384,
-    'H100': 81920,
 }
 
 

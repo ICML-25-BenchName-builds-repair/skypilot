@@ -1,12 +1,10 @@
 # Vicuna: An LLM Chatbot Impressing GPT-4 with 90% ChatGPT Quality
 
-<p align="center">
-    <img src="https://i.imgur.com/z3AOYLV.png" alt="Vicuna LLM"/>
-</p>
+<img src="https://vicuna.lmsys.org/favicon.jpeg" width="25%" alt="Vicuna LLM"/>
 
-This README contains instructions to run and train Vicuna, an open-source LLM chatbot with quality comparable to ChatGPT. The Vicuna release was trained using SkyPilot on [cloud spot instances](https://skypilot.readthedocs.io/en/latest/examples/spot-jobs.html), with a cost of ~$300.
+Vicuna is an LLM chatbot with impressive quality. It is trained using SkyPilot on [cloud spot instances](https://skypilot.readthedocs.io/en/latest/examples/spot-jobs.html), with a cost of ~$300.
 
-* [Blog post](https://lmsys.org/blog/2023-03-30-vicuna/)
+* [Blog post](https://vicuna.lmsys.org/)
 * [Demo](https://chat.lmsys.org/)
 * [Repo](https://github.com/lm-sys/FastChat)
 
@@ -20,7 +18,7 @@ See the Vicuna SkyPilot YAMLs: for [training](train.yaml) and for [serving](serv
 
 ## Serve the official Vicuna model by yourself with SkyPilot
 
-1. Start serving the Vicuna-7B model on a single A100 GPU:
+1. Start the serving the Vicuna-7B model on a single A100 GPU:
 ```bash
 sky launch -c vicuna-serve -s serve.yaml
 ```

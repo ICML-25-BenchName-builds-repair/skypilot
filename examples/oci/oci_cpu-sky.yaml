@@ -1,4 +1,4 @@
-name: cpu-task1
+name: cpu-task
 
 resources:
   # Optional; if left out, automatically pick the cheapest cloud.
@@ -6,15 +6,15 @@ resources:
 
   region: ap-seoul-1
   
-  # zone: AP-SEOUL-1-AD-1
+  zone: bxtG:AP-SEOUL-1-AD-1
   
-  instance_type: VM.Standard.E4.Flex$_2_16
+  instance_type: VM.Standard.E4.Flex
 
   cpus: 2
 
-  image_id: skypilot:cpu-ubuntu-2004
+  image_id: skypilot:oci-ubuntu-20_04
 
-  # use_spot: False
+  #use_spot: True
 
 # Working directory (optional) containing the project codebase.
 # Its contents are synced to ~/sky_workdir/ on the cluster.

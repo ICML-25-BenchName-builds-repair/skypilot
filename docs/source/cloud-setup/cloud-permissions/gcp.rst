@@ -25,11 +25,6 @@ The easiest way to grant permissions to a user access your GCP project without t
   roles/iam.serviceAccountUser
   roles/serviceusage.serviceUsageConsumer
   roles/storage.admin
-  roles/iam.securityAdmin
-
-.. note::
-    If the ``roles/iam.securityAdmin`` role is undesirable, you can do the following. First, include the role and have any user (e.g., the admin) run ``sky launch --cloud gcp`` successfully once. This is to create the necessary service account. Then, replace the role ``roles/iam.securityAdmin`` with ``roles/iam.roleViewer`` in the list above.
-
 
 Optionally, to use TPUs, add the following role:
 
@@ -44,7 +39,7 @@ You can grant those accesses via GCP's `IAM & Admin console <https://console.clo
 Minimal Permissions
 -----------------------
 
-The :ref:`Medium Permissions <gcp-medium-permissions>` assigns admin permissions for some GCP services to the user.  If you would like to grant finer-grained and more minimal permissions to your users in your organization / project, you can create a custom role by following the steps below:
+The :ref:`Medium Permissions <medium-permissions>` assigns admin permissions for some GCP services to the user.  If you would like to grant finer-grained and more minimal permissions to your users in your organization / project, you can create a custom role by following the steps below:
 
 User
 ~~~~~~~~~~~~
@@ -79,11 +74,11 @@ User
     compute.networks.list
     compute.networks.getEffectiveFirewalls
     compute.globalOperations.get
-    compute.reservations.list
     compute.subnetworks.use
     compute.subnetworks.list
     compute.subnetworks.useExternalIp
     compute.projects.get
+    compute.projects.setCommonInstanceMetadata
     compute.zoneOperations.get
     iam.roles.get
     iam.serviceAccounts.actAs
@@ -117,26 +112,9 @@ User
     tpu.nodes.update
     tpu.operations.get
 
-6. **Optional**: To enable ``sky launch --clone-disk-from``, you need to have the following permissions for the role as well:
-
-.. code-block:: text
-
-    compute.disks.useReadOnly
-    compute.images.create
-    compute.images.get
-    compute.images.delete
-
-7. **Optional**: To enable opening ports on GCP cluster, you need to have the following permissions for the role as well:
-
-.. code-block:: text
-
-    compute.instances.setTags
-    compute.firewalls.list
-    compute.firewalls.update
-
-8. Click **Create** to create the role.
-9. Go back to the "IAM" tab and click on **GRANT ACCESS**.
-10. Fill in the email address of the user in the “Add principals” section, and select ``minimal-skypilot-role`` in the “Assign roles” section. Click **Save**.
+5. Click **Create** to create the role.
+6. Go back to the "IAM" tab and click on **GRANT ACCESS**.
+7. Fill in the email address of the user in the “Add principals” section, and select ``minimal-skypilot-role`` in the “Assign roles” section. Click **Save**.
 
 
 .. image:: ../../images/screenshots/gcp/create-iam.png
@@ -144,7 +122,7 @@ User
     :align: center
     :alt: GCP Grant Access
 
-11. The user should receive an invitation to the project and should be able to setup SkyPilot by following the instructions in :ref:`Installation <installation-gcp>`.
+8. The user should receive an invitation to the project and should be able to setup SkyPilot by following the instructions in :ref:`Installation <installation-gcp>`.
 
 .. note::
 

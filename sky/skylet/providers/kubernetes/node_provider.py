@@ -2,18 +2,16 @@ import copy
 import logging
 import time
 from typing import Dict
+from urllib.parse import urlparse
 from uuid import uuid4
-
-from ray.autoscaler._private.command_runner import SSHCommandRunner
-from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import NODE_KIND_HEAD
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
-from ray.autoscaler.tags import TAG_RAY_NODE_KIND
 
 from sky.adaptors import kubernetes
 from sky.skylet.providers.kubernetes import config
-from sky.utils import common_utils
-from sky.utils import kubernetes_utils
+from sky.skylet.providers.kubernetes import get_head_ssh_port
+from sky.skylet.providers.kubernetes import utils
+from ray.autoscaler._private.command_runner import SSHCommandRunner
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import NODE_KIND_HEAD, TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_KIND
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +50,7 @@ class KubernetesNodeProvider(NodeProvider):
         self.cluster_name = cluster_name
 
         # Kubernetes namespace to user
-        self.namespace = kubernetes_utils.get_current_kube_config_context_namespace(
-        )
+        self.namespace = utils.get_current_kube_config_context_namespace()
 
         # Timeout for resource provisioning. If it takes longer than this
         # timeout, the resource provisioning will be considered failed.
@@ -100,7 +97,17 @@ class KubernetesNodeProvider(NodeProvider):
         return pod.metadata.labels
 
     def external_ip(self, node_id):
-        return kubernetes_utils.get_external_ip()
+        # Return the IP address of the first node with an external IP
+        nodes = kubernetes.core_api().list_node().items
+        for node in nodes:
+            if node.status.addresses:
+                for address in node.status.addresses:
+                    if address.type == 'ExternalIP':
+                        return address.address
+        # If no external IP is found, use the API server IP
+        api_host = kubernetes.core_api().api_client.configuration.host
+        parsed_url = urlparse(api_host)
+        return parsed_url.hostname
 
     def external_port(self, node_id):
         # Extract the NodePort of the head node's SSH service
@@ -109,7 +116,7 @@ class KubernetesNodeProvider(NodeProvider):
         # TODO(romilb): Implement caching here for performance.
         # TODO(romilb): Multi-node would need more handling here.
         cluster_name = node_id.split('-ray-head')[0]
-        return kubernetes_utils.get_head_ssh_port(cluster_name, self.namespace)
+        return get_head_ssh_port(cluster_name, self.namespace)
 
     def internal_ip(self, node_id):
         pod = kubernetes.core_api().read_namespaced_pod(node_id, self.namespace)
@@ -162,69 +169,6 @@ class KubernetesNodeProvider(NodeProvider):
         pod.metadata.labels.update(tags)
         kubernetes.core_api().patch_namespaced_pod(node_id, self.namespace, pod)
 
-    def _raise_pod_scheduling_errors(self, new_nodes):
-        for new_node in new_nodes:
-            pod = kubernetes.core_api().read_namespaced_pod(
-                new_node.metadata.name, self.namespace)
-            pod_status = pod.status.phase
-            # When there are multiple pods involved while launching instance,
-            # there may be a single pod causing issue while others are
-            # scheduled. In this case, we make sure to not surface the error
-            # message from the pod that is already scheduled.
-            if pod_status != 'Pending':
-                continue
-            pod_name = pod._metadata._name
-            events = kubernetes.core_api().list_namespaced_event(
-                self.namespace,
-                field_selector=(f'involvedObject.name={pod_name},'
-                                'involvedObject.kind=Pod'))
-            # Events created in the past hours are kept by
-            # Kubernetes python client and we want to surface
-            # the latest event message
-            events_desc_by_time = sorted(
-                events.items,
-                key=lambda e: e.metadata.creation_timestamp,
-                reverse=True)
-            for event in events_desc_by_time:
-                if event.reason == 'FailedScheduling':
-                    event_message = event.message
-                    break
-            timeout_err_msg = ('Timed out while waiting for nodes to start. '
-                               'Cluster may be out of resources or '
-                               'may be too slow to autoscale.')
-            lack_resource_msg = (
-                'Insufficient {resource} capacity on the cluster. '
-                'Other SkyPilot tasks or pods may be using resources. '
-                'Check resource usage by running `kubectl describe nodes`.')
-            if event_message is not None:
-                if pod_status == 'Pending':
-                    if 'Insufficient cpu' in event_message:
-                        raise config.KubernetesError(
-                            lack_resource_msg.format(resource='CPU'))
-                    if 'Insufficient memory' in event_message:
-                        raise config.KubernetesError(
-                            lack_resource_msg.format(resource='memory'))
-                    gpu_lf_keys = [
-                        lf.get_label_key()
-                        for lf in kubernetes_utils.LABEL_FORMATTER_REGISTRY
-                    ]
-                    if pod.spec.node_selector:
-                        for label_key in pod.spec.node_selector.keys():
-                            if label_key in gpu_lf_keys:
-                                # TODO(romilb): We may have additional node
-                                #  affinity selectors in the future - in that
-                                #  case we will need to update this logic.
-                                if 'Insufficient nvidia.com/gpu' in event_message or \
-                                    'didn\'t match Pod\'s node affinity/selector' in event_message:
-                                    raise config.KubernetesError(
-                                        f'{lack_resource_msg.format(resource="GPU")} '
-                                        f'Verify if {pod.spec.node_selector[label_key]}'
-                                        ' is available in the cluster.')
-                raise config.KubernetesError(f'{timeout_err_msg} '
-                                             f'Pod status: {pod_status}'
-                                             f'Details: \'{event_message}\' ')
-        raise config.KubernetesError(f'{timeout_err_msg}')
-
     def create_node(self, node_config, tags, count):
         conf = copy.deepcopy(node_config)
         pod_spec = conf.get('pod', conf)
@@ -257,6 +201,7 @@ class KubernetesNodeProvider(NodeProvider):
                         '(count={}).'.format(count))
 
             for new_node in new_nodes:
+
                 metadata = service_spec.get('metadata', {})
                 metadata['name'] = new_node.metadata.name
                 service_spec['metadata'] = metadata
@@ -265,28 +210,19 @@ class KubernetesNodeProvider(NodeProvider):
                     self.namespace, service_spec)
                 new_svcs.append(svc)
 
-        # Wait for all pods including jump pod to be ready, and if it
-        # exceeds the timeout, raise an exception. If pod's container
-        # is ContainerCreating, then we can assume that resources have been
-        # allocated and we can exit.
-        ssh_jump_pod_name = conf['metadata']['labels']['skypilot-ssh-jump']
-        jump_pod = kubernetes.core_api().read_namespaced_pod(
-            ssh_jump_pod_name, self.namespace)
-        new_nodes.append(jump_pod)
+        # Wait for all pods to be ready, and if it exceeds the timeout, raise an
+        # exception. If pod's container is ContainerCreating, then we can assume
+        # that resources have been allocated and we can exit.
+
         start = time.time()
         while True:
             if time.time() - start > self.timeout:
-                try:
-                    self._raise_pod_scheduling_errors(new_nodes)
-                except config.KubernetesError:
-                    raise
-                except Exception as e:
-                    raise config.KubernetesError(
-                        'An error occurred while trying to fetch the reason '
-                        'for pod scheduling failure. '
-                        f'Error: {common_utils.format_exception(e)}') from None
-
+                raise config.KubernetesError(
+                    'Timed out while waiting for nodes to start. '
+                    'Cluster may be out of resources or '
+                    'may be too slow to autoscale.')
             all_ready = True
+
             for node in new_nodes:
                 pod = kubernetes.core_api().read_namespaced_pod(
                     node.metadata.name, self.namespace)
@@ -313,71 +249,8 @@ class KubernetesNodeProvider(NodeProvider):
                 break
             time.sleep(1)
 
-        # Wait for pod containers to be ready - they may be pulling images or
-        # may be in the process of container creation.
-        while True:
-            pods = []
-            for node in new_nodes:
-                pod = kubernetes.core_api().read_namespaced_pod(
-                    node.metadata.name, self.namespace)
-                pods.append(pod)
-            if all([pod.status.phase == "Running" for pod in pods]) \
-                    and all(
-                [container.state.running for pod in pods for container in
-                 pod.status.container_statuses]):
-                break
-            time.sleep(1)
-
-        # Once all containers are ready, we can exec into them and set env vars.
-        # Kubernetes automatically populates containers with critical
-        # environment variables, such as those for discovering services running
-        # in the cluster and CUDA/nvidia environment variables. We need to
-        # make sure these env vars are available in every task and ssh session.
-        # This is needed for GPU support and service discovery.
-        # See https://github.com/skypilot-org/skypilot/issues/2287 for
-        # more details.
-        # To do so, we capture env vars from the pod's runtime and write them to
-        # /etc/profile.d/, making them available for all users in future
-        # shell sessions.
-        set_k8s_env_var_cmd = [
-            '/bin/sh', '-c',
-            ('printenv | awk -F "=" \'{print "export " $1 "=\\047" $2 "\\047"}\' > ~/k8s_env_var.sh && '
-             'mv ~/k8s_env_var.sh /etc/profile.d/k8s_env_var.sh || '
-             'sudo mv ~/k8s_env_var.sh /etc/profile.d/k8s_env_var.sh')
-        ]
-        for new_node in new_nodes:
-            kubernetes.stream()(
-                kubernetes.core_api().connect_get_namespaced_pod_exec,
-                new_node.metadata.name,
-                self.namespace,
-                command=set_k8s_env_var_cmd,
-                stderr=True,
-                stdin=False,
-                stdout=True,
-                tty=False,
-                _request_timeout=kubernetes.API_TIMEOUT)
-
     def terminate_node(self, node_id):
         logger.info(config.log_prefix + 'calling delete_namespaced_pod')
-        try:
-            kubernetes_utils.clean_zombie_ssh_jump_pod(self.namespace, node_id)
-        except Exception as e:
-            logger.warning(config.log_prefix +
-                           f'Error occurred when analyzing SSH Jump pod: {e}')
-        try:
-            kubernetes.core_api().delete_namespaced_service(
-                node_id,
-                self.namespace,
-                _request_timeout=config.DELETION_TIMEOUT)
-            kubernetes.core_api().delete_namespaced_service(
-                f'{node_id}-ssh',
-                self.namespace,
-                _request_timeout=config.DELETION_TIMEOUT)
-        except kubernetes.api_exception():
-            pass
-        # Note - delete pod after all other resources are deleted.
-        # This is to ensure there are no leftover resources if this down is run
-        # from within the pod, e.g., for autodown.
         try:
             kubernetes.core_api().delete_namespaced_pod(
                 node_id,
@@ -390,6 +263,17 @@ class KubernetesNodeProvider(NodeProvider):
                                ' but the pod was not found (404).')
             else:
                 raise
+        try:
+            kubernetes.core_api().delete_namespaced_service(
+                node_id,
+                self.namespace,
+                _request_timeout=config.DELETION_TIMEOUT)
+            kubernetes.core_api().delete_namespaced_service(
+                f'{node_id}-ssh',
+                self.namespace,
+                _request_timeout=config.DELETION_TIMEOUT)
+        except kubernetes.api_exception():
+            pass
 
     def terminate_nodes(self, node_ids):
         # TODO(romilb): terminate_nodes should be include optimizations for

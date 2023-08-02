@@ -1,12 +1,20 @@
 import copy
 import logging
 import math
-from typing import Any, Dict, Union
+import re
 
 from sky.adaptors import kubernetes
-from sky.utils import kubernetes_utils
+from sky.skylet.providers.kubernetes import utils
 
 logger = logging.getLogger(__name__)
+
+MEMORY_SIZE_UNITS = {
+    "K": 2**10,
+    "M": 2**20,
+    "G": 2**30,
+    "T": 2**40,
+    'P': 2**50,
+}
 
 log_prefix = 'KubernetesNodeProvider: '
 
@@ -16,46 +24,44 @@ DELETION_TIMEOUT = 90
 
 class InvalidNamespaceError(ValueError):
 
-    def __init__(self, field_name: str, namespace: str):
+    def __init__(self, field_name, namespace):
         self.message = (
             f'Namespace of {field_name} config does not match provided '
             f'namespace "{namespace}". Either set it to {namespace} or remove the '
             'field')
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.message
 
 
-def using_existing_msg(resource_type: str, name: str) -> str:
+def using_existing_msg(resource_type, name):
     return f'using existing {resource_type} "{name}"'
 
 
-def updating_existing_msg(resource_type: str, name: str) -> str:
+def updating_existing_msg(resource_type, name):
     return f'updating existing {resource_type} "{name}"'
 
 
-def not_found_msg(resource_type: str, name: str) -> str:
+def not_found_msg(resource_type, name):
     return f'{resource_type} "{name}" not found, attempting to create it'
 
 
-def not_checking_msg(resource_type: str, name: str) -> str:
+def not_checking_msg(resource_type, name):
     return f'not checking if {resource_type} "{name}" exists'
 
 
-def created_msg(resource_type: str, name: str) -> str:
+def created_msg(resource_type, name):
     return f'successfully created {resource_type} "{name}"'
 
 
-def not_provided_msg(resource_type: str) -> str:
+def not_provided_msg(resource_type):
     return f'no {resource_type} config provided, must already exist'
 
 
-def bootstrap_kubernetes(config: Dict[str, Any]) -> Dict[str, Any]:
-    namespace = kubernetes_utils.get_current_kube_config_context_namespace()
+def bootstrap_kubernetes(config):
+    namespace = utils.get_current_kube_config_context_namespace()
 
     _configure_services(namespace, config['provider'])
-
-    config = _configure_ssh_jump(namespace, config)
 
     if not config['provider'].get('_operator'):
         # These steps are unecessary when using the Operator.
@@ -66,7 +72,7 @@ def bootstrap_kubernetes(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def fillout_resources_kubernetes(config: Dict[str, Any]) -> Dict[str, Any]:
+def fillout_resources_kubernetes(config):
     """Fills CPU and GPU resources in the ray cluster config.
 
     For each node type and each of CPU/GPU, looks at container's resources
@@ -99,8 +105,7 @@ def fillout_resources_kubernetes(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def get_autodetected_resources(
-        container_data: Dict[str, Any]) -> Dict[str, Any]:
+def get_autodetected_resources(container_data):
     container_resources = container_data.get('resources', None)
     if container_resources is None:
         return {'CPU': 0, 'GPU': 0}
@@ -110,33 +115,22 @@ def get_autodetected_resources(
         for resource_name in ['cpu', 'gpu']
     }
 
+    # TODO(romilb): Update this to allow fractional resources.
     memory_limits = get_resource(container_resources, 'memory')
-    node_type_resources['memory'] = memory_limits
+    node_type_resources['memory'] = int(memory_limits)
 
     return node_type_resources
 
 
-def get_resource(container_resources: Dict[str, Any],
-                 resource_name: str) -> int:
-    request = _get_resource(container_resources,
-                            resource_name,
-                            field_name='requests')
+def get_resource(container_resources, resource_name):
     limit = _get_resource(container_resources,
                           resource_name,
                           field_name='limits')
-    # Use request if limit is not set, else use limit.
     # float('inf') means there's no limit set
-    res_count = request if limit == float('inf') else limit
-    # Convert to int since Ray autoscaler expects int.
-    # Cap the minimum resource to 1 because if resource count is set to 0,
-    # (e.g., when request=0.5), ray will not be able to schedule any tasks.
-    # We also round up the resource count to the nearest integer to provide the
-    # user at least the amount of resource they requested.
-    return max(1, math.ceil(res_count))
+    return 0 if limit == float('inf') else int(limit)
 
 
-def _get_resource(container_resources: Dict[str, Any], resource_name: str,
-                  field_name: str) -> Union[int, float]:
+def _get_resource(container_resources, resource_name, field_name):
     """Returns the resource quantity.
 
     The amount of resource is rounded up to nearest integer.
@@ -166,13 +160,33 @@ def _get_resource(container_resources: Dict[str, Any], resource_name: str,
     resource_key = matching_keys.pop()
     resource_quantity = resources[resource_key]
     if resource_name == 'memory':
-        return kubernetes_utils.parse_memory_resource(resource_quantity)
+        return _parse_memory_resource(resource_quantity)
     else:
-        return kubernetes_utils.parse_cpu_or_gpu_resource(resource_quantity)
+        return _parse_cpu_or_gpu_resource(resource_quantity)
 
 
-def _configure_autoscaler_service_account(
-        namespace: str, provider_config: Dict[str, Any]) -> None:
+def _parse_cpu_or_gpu_resource(resource):
+    resource_str = str(resource)
+    if resource_str[-1] == 'm':
+        # For example, '500m' rounds up to 1.
+        return math.ceil(int(resource_str[:-1]) / 1000)
+    else:
+        return float(resource_str)
+
+
+def _parse_memory_resource(resource):
+    resource_str = str(resource)
+    try:
+        return int(resource_str)
+    except ValueError:
+        pass
+    memory_size = re.sub(r'([KMGTP]+)', r' \1', resource_str)
+    number, unit_index = [item.strip() for item in memory_size.split()]
+    unit_index = unit_index[0]
+    return float(number) * MEMORY_SIZE_UNITS[unit_index]
+
+
+def _configure_autoscaler_service_account(namespace, provider_config):
     account_field = 'autoscaler_service_account'
     if account_field not in provider_config:
         logger.info(log_prefix + not_provided_msg(account_field))
@@ -198,8 +212,7 @@ def _configure_autoscaler_service_account(
     logger.info(log_prefix + created_msg(account_field, name))
 
 
-def _configure_autoscaler_role(namespace: str,
-                               provider_config: Dict[str, Any]) -> None:
+def _configure_autoscaler_role(namespace, provider_config):
     role_field = 'autoscaler_role'
     if role_field not in provider_config:
         logger.info(log_prefix + not_provided_msg(role_field))
@@ -225,8 +238,7 @@ def _configure_autoscaler_role(namespace: str,
     logger.info(log_prefix + created_msg(role_field, name))
 
 
-def _configure_autoscaler_role_binding(namespace: str,
-                                       provider_config: Dict[str, Any]) -> None:
+def _configure_autoscaler_role_binding(namespace, provider_config):
     binding_field = 'autoscaler_role_binding'
     if binding_field not in provider_config:
         logger.info(log_prefix + not_provided_msg(binding_field))
@@ -259,42 +271,7 @@ def _configure_autoscaler_role_binding(namespace: str,
     logger.info(log_prefix + created_msg(binding_field, name))
 
 
-def _configure_ssh_jump(namespace, config):
-    """Creates a SSH jump pod to connect to the cluster.
-
-    Also updates config['auth']['ssh_proxy_command'] to use the newly created
-    jump pod.
-    """
-    pod_cfg = config['available_node_types']['ray_head_default']['node_config']
-
-    ssh_jump_name = pod_cfg['metadata']['labels']['skypilot-ssh-jump']
-    ssh_jump_image = config['provider']['ssh_jump_image']
-
-    volumes = pod_cfg['spec']['volumes']
-    # find 'secret-volume' and get the secret name
-    secret_volume = next(filter(lambda x: x['name'] == 'secret-volume',
-                                volumes))
-    ssh_key_secret_name = secret_volume['secret']['secretName']
-
-    # TODO(romilb): We currently split SSH jump pod and svc creation. Service
-    #  is first created in authentication.py::setup_kubernetes_authentication
-    #  and then SSH jump pod creation happens here. This is because we need to
-    #  set the ssh_proxy_command in the ray YAML before we pass it to the
-    #  autoscaler. If in the future if we can write the ssh_proxy_command to the
-    #  cluster yaml through this method, then we should move the service
-    #  creation here.
-
-    # TODO(romilb): We should add a check here to make sure the service is up
-    #  and available before we create the SSH jump pod. If for any reason the
-    #  service is missing, we should raise an error.
-
-    kubernetes_utils.setup_ssh_jump_pod(ssh_jump_name, ssh_jump_image,
-                                        ssh_key_secret_name, namespace)
-    return config
-
-
-def _configure_services(namespace: str, provider_config: Dict[str,
-                                                              Any]) -> None:
+def _configure_services(namespace, provider_config):
     service_field = 'services'
     if service_field not in provider_config:
         logger.info(log_prefix + not_provided_msg(service_field))

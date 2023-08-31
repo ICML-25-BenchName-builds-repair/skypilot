@@ -1,7 +1,6 @@
 """Rich status spinner utils."""
 import contextlib
 import threading
-from typing import Union
 
 import rich.console as rich_console
 
@@ -15,7 +14,7 @@ class _NoOpConsoleStatus:
     """An empty class for multi-threaded console.status."""
 
     def __enter__(self):
-        return self
+        pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
@@ -30,7 +29,7 @@ class _NoOpConsoleStatus:
         pass
 
 
-def safe_status(msg: str) -> Union['rich_console.Status', _NoOpConsoleStatus]:
+def safe_status(msg: str):
     """A wrapper for multi-threaded console.status."""
     from sky import sky_logging  # pylint: disable=import-outside-toplevel
     if (threading.current_thread() is threading.main_thread() and

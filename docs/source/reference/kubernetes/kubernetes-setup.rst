@@ -90,21 +90,15 @@ Deploying on Google Cloud GKE
 3. [If using GPUs] If your GKE nodes have GPUs, you may need to to
    `manually install <https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/>`_
    nvidia drivers. You can do so by deploying the daemonset
-   depending on the GPU and OS on your nodes:
+   depending on the OS of your nodes:
 
    .. code-block:: console
 
-     # For Container Optimized OS (COS) based nodes with GPUs other than Nvidia L4 (e.g., V100, A100, ...):
+     # For Container Optimized OS (COS) based nodes:
      $ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 
-     # For Container Optimized OS (COS) based nodes with L4 GPUs:
-     $ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded-latest.yaml
-
-     # For Ubuntu based nodes with GPUs other than Nvidia L4 (e.g., V100, A100, ...):
+     # For Ubuntu based nodes:
      $ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/ubuntu/daemonset-preloaded.yaml
-
-     # For Ubuntu based nodes with L4 GPUs:
-     $ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/ubuntu/daemonset-preloaded-R525.yaml
 
    To verify if GPU drivers are set up, run ``kubectl describe nodes`` and verify that ``nvidia.com/gpu`` is listed under the ``Capacity`` section.
 

@@ -1,6 +1,6 @@
 .. _kubernetes-overview:
 
-Running on Kubernetes
+Running on Kubernetes (Alpha)
 =============================
 
 .. note::
@@ -50,15 +50,15 @@ Submitting SkyPilot tasks to Kubernetes Clusters
 
 Once your cluster administrator has :ref:`setup a Kubernetes cluster <kubernetes-setup>` and provided you with a kubeconfig file:
 
-0. Make sure `kubectl <https://kubernetes.io/docs/tasks/tools/>`_, ``socat`` and ``nc`` (netcat) are installed on your local machine.
+0. Make sure `kubectl <https://kubernetes.io/docs/tasks/tools/>`_, ``socat`` and ``lsof`` are installed on your local machine.
 
    .. code-block:: console
 
-     $ # MacOS
-     $ brew install kubectl socat netcat
+     $ # MacOS (lsof is already installed)
+     $ brew install kubectl socat
 
-     $ # Linux (may have socat already installed)
-     $ sudo apt-get install kubectl socat netcat
+     $ # Linux (may have socat and lsof already installed)
+     $ sudo apt-get install kubectl socat lsof
 
 
 1. Place your kubeconfig file at ``~/.kube/config``.
@@ -151,9 +151,7 @@ Kubernetes support is under active development. Some features are in progress an
 * CPU and GPU Tasks - ✅ Available
 * Auto-down - ✅ Available
 * Storage mounting - ✅ Available on x86_64 clusters
-* Multi-node tasks - ✅ Available
-* Opening ports and exposing services - 🚧 In progress
-* Custom images - 🚧 In progress
+* Multi-node tasks - 🚧 In progress
 * Multiple Kubernetes Clusters - 🚧 In progress
 
 

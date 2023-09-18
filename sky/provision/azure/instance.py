@@ -3,7 +3,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sky import sky_logging
 from sky.adaptors import azure
-from sky.utils import ux_utils
 
 logger = sky_logging.init_logger(__name__)
 
@@ -67,9 +66,8 @@ def open_ports(
                 ))
             update_network_security_groups(resource_group, nsg.name, nsg)
         except azure.http_error_exception() as e:
-            with ux_utils.print_exception_no_traceback():
-                raise ValueError(
-                    f'Failed to open ports {ports} in NSG {nsg.name}.') from e
+            logger.warning(
+                f'Failed to open ports {ports} in NSG {nsg.name}: {e}')
 
 
 def cleanup_ports(

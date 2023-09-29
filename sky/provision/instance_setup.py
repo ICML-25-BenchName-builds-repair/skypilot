@@ -93,8 +93,7 @@ def _hint_worker_log_path(cluster_name: str, cluster_info: common.ClusterInfo,
 
 
 def _parallel_ssh_with_cache(func, cluster_name: str, stage_name: str,
-                             digest: Optional[str],
-                             cluster_info: common.ClusterInfo,
+                             digest: str, cluster_info: common.ClusterInfo,
                              ssh_credentials: Dict[str, Any]) -> List[Any]:
     with futures.ThreadPoolExecutor(max_workers=32) as pool:
         results = []
@@ -141,7 +140,7 @@ def initialize_docker(cluster_name: str, docker_config: Dict[str, Any],
         stage_name='initialize_docker',
         # Should not cache docker setup, as it needs to be
         # run every time a cluster is restarted.
-        digest=None,
+        digest=str(time.time()),
         cluster_info=cluster_info,
         ssh_credentials=ssh_credentials)
     logger.debug(f'All docker users: {docker_users}')
@@ -373,7 +372,8 @@ def _internal_file_mounts(file_mounts: Dict,
 @_log_start_end
 def internal_file_mounts(cluster_name: str, common_file_mounts: Dict,
                          cluster_info: common.ClusterInfo,
-                         ssh_credentials: Dict[str, str]) -> None:
+                         ssh_credentials: Dict[str,
+                                               str], wheel_hash: str) -> None:
     """Executes file mounts - rsyncing internal local files"""
     _hint_worker_log_path(cluster_name, cluster_info, 'internal_file_mounts')
 
@@ -382,14 +382,9 @@ def internal_file_mounts(cluster_name: str, common_file_mounts: Dict,
         del metadata
         _internal_file_mounts(common_file_mounts, runner, log_path)
 
-    _parallel_ssh_with_cache(
-        _setup_node,
-        cluster_name,
-        stage_name='internal_file_mounts',
-        # Do not cache the file mounts, as the cloud
-        # credentials may change, and we should always
-        # update the remote files. The internal file_mounts
-        # is minimal and should not take too much time.
-        digest=None,
-        cluster_info=cluster_info,
-        ssh_credentials=ssh_credentials)
+    _parallel_ssh_with_cache(_setup_node,
+                             cluster_name,
+                             stage_name='internal_file_mounts',
+                             digest=wheel_hash,
+                             cluster_info=cluster_info,
+                             ssh_credentials=ssh_credentials)

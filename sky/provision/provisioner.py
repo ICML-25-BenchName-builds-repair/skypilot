@@ -3,6 +3,7 @@ import collections
 import dataclasses
 import json
 import os
+import pathlib
 import shlex
 import socket
 import subprocess
@@ -310,6 +311,7 @@ def wait_for_ssh(cluster_info: provision_common.ClusterInfo,
 
 def _post_provision_setup(
         cloud_name: str, cluster_name: ClusterName, cluster_yaml: str,
+        local_wheel_path: pathlib.Path, wheel_hash: str,
         provision_record: provision_common.ProvisionRecord,
         custom_resource: Optional[str]) -> provision_common.ClusterInfo:
     cluster_info = provision.get_cluster_info(cloud_name,
@@ -386,15 +388,21 @@ def _post_provision_setup(
         # (3) all instances need permission to mount storage for all clouds
         # It is possible to have a "smaller" permission model, but we leave that
         # for later.
-        file_mounts = config_from_yaml.get('file_mounts', {})
+        file_mounts = {
+            backend_utils.SKY_REMOTE_PATH + '/' + wheel_hash:
+                str(local_wheel_path),
+            **config_from_yaml.get('file_mounts', {})
+        }
 
         runtime_preparation_str = ('[bold cyan]Preparing SkyPilot '
                                    'runtime ({step}/3 - {step_name})')
         status.update(
             runtime_preparation_str.format(step=1, step_name='initializing'))
         instance_setup.internal_file_mounts(cluster_name.name_on_cloud,
-                                            file_mounts, cluster_info,
-                                            ssh_credentials)
+                                            file_mounts,
+                                            cluster_info,
+                                            ssh_credentials,
+                                            wheel_hash=wheel_hash)
 
         status.update(
             runtime_preparation_str.format(step=2, step_name='dependencies'))
@@ -456,6 +464,7 @@ def _post_provision_setup(
 
 def post_provision_runtime_setup(
         cloud_name: str, cluster_name: ClusterName, cluster_yaml: str,
+        local_wheel_path: pathlib.Path, wheel_hash: str,
         provision_record: provision_common.ProvisionRecord,
         custom_resource: Optional[str],
         log_dir: str) -> provision_common.ClusterInfo:
@@ -466,7 +475,7 @@ def post_provision_runtime_setup(
     2. Mount the cloud credentials, skypilot wheel,
        and other necessary files to the VM.
     3. Run setup commands to install dependencies.
-    4. Start ray cluster and skylet.
+    4. Starting ray cluster and skylet.
     """
     with provision_logging.setup_provision_logging(log_dir):
         try:
@@ -474,6 +483,8 @@ def post_provision_runtime_setup(
             return _post_provision_setup(cloud_name,
                                          cluster_name,
                                          cluster_yaml=cluster_yaml,
+                                         local_wheel_path=local_wheel_path,
+                                         wheel_hash=wheel_hash,
                                          provision_record=provision_record,
                                          custom_resource=custom_resource)
         except Exception:  # pylint: disable=broad-except

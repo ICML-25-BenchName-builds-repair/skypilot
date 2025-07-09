@@ -550,9 +550,9 @@ def get_usable_vpc_and_subnet(
                                     compute,
                                     filter=f'name={specific_vpc_to_use}')
         # On GCP, VPC names are unique, so it'd be 0 or 1 VPC found.
-        assert (len(vpcnets_all) <=
-                1), (f'{len(vpcnets_all)} VPCs found with the same name '
-                     f'{specific_vpc_to_use}')
+        assert (len(vpcnets_all)
+                <= 1), (f'{len(vpcnets_all)} VPCs found with the same name '
+                        f'{specific_vpc_to_use}')
         if len(vpcnets_all) == 1:
             # Skip checking any firewall rules if the user has specified a VPC.
             logger.info(f'Using user-specified VPC {specific_vpc_to_use!r}.')

@@ -282,8 +282,8 @@ def _run_instances(region: str, cluster_name_on_cloud: str,
     if to_start_count > 0:
         errors, created_instance_ids = resource.create_instances(
             cluster_name_on_cloud, project_id, availability_zone,
-            config.node_config, labels, to_start_count,
-            head_instance_id is None)
+            config.node_config, labels, to_start_count, head_instance_id
+            is None)
         if errors:
             error = common.ProvisionerError('Failed to launch instances.')
             error.errors = errors

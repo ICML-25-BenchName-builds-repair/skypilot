@@ -126,9 +126,8 @@ def list_reservations_for_instance_type_in_zone(
     return [r for r in reservations if r.zone.endswith(f'/{zone}')]
 
 
-@cachetools.cached(cache=cachetools.TTLCache(maxsize=1,
-                                             ttl=300,
-                                             timer=time.time))
+@cachetools.cached(
+    cache=cachetools.TTLCache(maxsize=1, ttl=300, timer=time.time))
 def _list_reservations_for_instance_type(
     instance_type: str,) -> List[GCPReservation]:
     """List all reservations for the given instance type.

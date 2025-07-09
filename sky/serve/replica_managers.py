@@ -633,8 +633,8 @@ class SkyPilotReplicaManager(ReplicaManager):
                 error_in_sky_launch = False
                 if info.status == serve_state.ReplicaStatus.PENDING:
                     # sky.launch not started yet
-                    if (serve_state.total_number_provisioning_replicas() <
-                            _MAX_NUM_LAUNCH):
+                    if (serve_state.total_number_provisioning_replicas()
+                            < _MAX_NUM_LAUNCH):
                         p.start()
                         info.status_property.sky_launch_status = (
                             ProcessStatus.RUNNING)
@@ -862,8 +862,8 @@ class SkyPilotReplicaManager(ReplicaManager):
                         consecutive_failure_time = (
                             info.consecutive_failure_times[-1] -
                             info.consecutive_failure_times[0])
-                        if (consecutive_failure_time >=
-                                _CONSECUTIVE_FAILURE_THRESHOLD_TIMEOUT):
+                        if (consecutive_failure_time
+                                >= _CONSECUTIVE_FAILURE_THRESHOLD_TIMEOUT):
                             logger.info(
                                 f'Replica {info.replica_id} is not ready for '
                                 'too long and exceeding consecutive failure '

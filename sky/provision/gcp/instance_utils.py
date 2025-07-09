@@ -727,7 +727,9 @@ class GCPComputeInstance(GCPInstance):
             'count': count,
             'instanceProperties': config,
             'sourceInstanceTemplate': source_instance_template,
-            'perInstanceProperties': {n: {} for n in names}
+            'perInstanceProperties': {
+                n: {} for n in names
+            }
         }
 
         def _handle_http_error(e):

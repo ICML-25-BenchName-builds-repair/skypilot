@@ -22,8 +22,8 @@ def _reload_config() -> None:
 def _check_empty_config() -> None:
     """Check that the config is empty."""
     assert not skypilot_config.loaded()
-    assert skypilot_config.get_nested(
-        ('aws', 'ssh_proxy_command'), None) is None
+    assert skypilot_config.get_nested(('aws', 'ssh_proxy_command'),
+                                      None) is None
     assert skypilot_config.get_nested(('aws', 'ssh_proxy_command'),
                                       'default') == 'default'
     with pytest.raises(RuntimeError):
@@ -190,8 +190,8 @@ def test_config_get_set_nested(monkeypatch, tmp_path) -> None:
     _reload_config()
     assert skypilot_config.get_nested(('aws', 'vpc_name'), None) == VPC_NAME
     assert skypilot_config.get_nested(('aws', 'use_internal_ips'), None)
-    assert skypilot_config.get_nested(
-        ('aws', 'ssh_proxy_command'), None) is None
+    assert skypilot_config.get_nested(('aws', 'ssh_proxy_command'),
+                                      None) is None
     assert skypilot_config.get_nested(('gcp', 'vpc_name'), None) == VPC_NAME
     assert skypilot_config.get_nested(('gcp', 'use_internal_ips'), None)
 
@@ -205,14 +205,14 @@ def test_config_get_set_nested(monkeypatch, tmp_path) -> None:
     _reload_config()
     assert skypilot_config.get_nested(('aws', 'vpc_name'), None) == VPC_NAME
     assert skypilot_config.get_nested(('aws', 'use_internal_ips'), None) is None
-    assert skypilot_config.get_nested(
-        ('aws', 'ssh_proxy_command'), None) is None
+    assert skypilot_config.get_nested(('aws', 'ssh_proxy_command'),
+                                      None) is None
     # set_nested() should still work
     new_config4 = skypilot_config.set_nested(('aws', 'ssh_proxy_command'),
                                              'new_value')
     assert new_config4['aws']['ssh_proxy_command'] == 'new_value'
-    assert skypilot_config.get_nested(
-        ('aws', 'ssh_proxy_command'), None) is None
+    assert skypilot_config.get_nested(('aws', 'ssh_proxy_command'),
+                                      None) is None
 
 
 def test_config_with_env(monkeypatch, tmp_path) -> None:

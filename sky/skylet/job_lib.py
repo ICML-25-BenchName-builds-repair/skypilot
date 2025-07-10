@@ -556,8 +556,8 @@ def update_job_status(job_owner: str,
             # Gives a 60 second grace period between job being submit from
             # the pending table until appearing in ray jobs.
             if (pending_jobs[job_id]['submit'] > 0 and
-                    pending_jobs[job_id]['submit'] <
-                    time.time() - _PENDING_SUBMIT_GRACE_PERIOD):
+                    pending_jobs[job_id]['submit']
+                    < time.time() - _PENDING_SUBMIT_GRACE_PERIOD):
                 # For jobs submitted outside of the grace period, we will
                 # consider the ray job status.
                 continue

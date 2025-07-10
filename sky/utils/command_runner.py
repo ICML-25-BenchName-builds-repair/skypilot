@@ -117,8 +117,7 @@ def ssh_options_list(
 
     return ssh_key_option + [
         x for y in (['-o', f'{k}={v}']
-                    for k, v in arg_dict.items()
-                    if v is not None) for x in y
+                    for k, v in arg_dict.items() if v is not None) for x in y
     ]
 
 

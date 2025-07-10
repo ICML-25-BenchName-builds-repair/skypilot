@@ -172,7 +172,8 @@ def _get_ibm_cos_bucket_region(region, bucket_name):
         tmp_client = ibm.get_cos_client(region)
         tmp_client.head_bucket(Bucket=bucket_name)
         return region
-    except ibm.ibm_botocore.exceptions.ClientError as e:  # type: ignore[union-attr] # pylint: disable=line-too-long
+    # type: ignore[union-attr] # pylint: disable=line-too-long
+    except ibm.ibm_botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] == '404':
             logger.debug(f'bucket {bucket_name} was not found '
                          f'in {region}')

@@ -23,7 +23,7 @@ def docker_start_cmds(
     docker_cmd,
 ):
     """Generating docker start command without --rm.
-    
+
     The code is borrowed from `ray.autoscaler._private.docker`.
 
     Changes we made:

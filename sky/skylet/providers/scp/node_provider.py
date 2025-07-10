@@ -53,8 +53,8 @@ def _validation_check(node_config):
     if 'diskSize' not in node_config:
         err_msg = "Disk size value is mandatory."
     elif node_config['diskSize'] < 100 or node_config['diskSize'] > 300:
-        err_msg =  f'The disk size must be between 100 and 300. ' \
-                   f'Input: {node_config["diskSize"]}'
+        err_msg = f'The disk size must be between 100 and 300. ' \
+            f'Input: {node_config["diskSize"]}'
     if err_msg:
         raise SCPError(err_msg)
 
@@ -463,8 +463,8 @@ class SCPNodeProvider(NodeProvider):
 
         if count:
             if (node_config['region'] not in self.my_service_zones):
-                raise SCPError('This region/zone is not available for '\
-                                'this project.')
+                raise SCPError('This region/zone is not available for '
+                               'this project.')
 
             zone_config = ZoneConfig(self.scp_client, node_config)
             vpc_subnets = zone_config.get_vcp_subnets()
@@ -553,7 +553,7 @@ class SCPNodeProvider(NodeProvider):
         node_config['region'] = provider_config['region']
         node_config['auth'] = cluster_config['auth']
 
-        #Add file mount: metadata path
+        # Add file mount: metadata path
         metadata_path = f'{TAG_PATH_PREFIX}-{cluster_config["cluster_name"]}'
         cluster_config['file_mounts'][metadata_path] = metadata_path
 

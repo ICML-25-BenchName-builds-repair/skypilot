@@ -411,7 +411,7 @@ class IBMVPCNodeProvider(NodeProvider):
                 logger.debug(
                     f"""node: {node_id} is_terminated?
                     {node["status"] not in
-                    ["running", "starting", "pending"]}"""
+                     ["running", "starting", "pending"]}"""
                 )
                 return node["status"] not in ["running", "starting", "pending"]
             # pylint: disable=W0703

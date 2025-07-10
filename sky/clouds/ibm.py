@@ -347,10 +347,10 @@ class IBM(clouds.Cloud):
 
         client = ibm.client(region=region)
         # returns default image: "ibm-ubuntu-22-04" with amd architecture
-        return next((img for img in _get_image_objects() if
-         img['name'].startswith('ibm-ubuntu-22-04') \
-            and img['operating_system']['architecture'].startswith(
-                'amd')))['id']
+        return next(
+            (img for img in _get_image_objects()
+             if img['name'].startswith('ibm-ubuntu-22-04') and
+             img['operating_system']['architecture'].startswith('amd')))['id']
 
     @classmethod
     def get_image_size(cls, image_id: str, region: Optional[str]) -> float:
@@ -359,6 +359,7 @@ class IBM(clouds.Cloud):
         try:
             image_data = client.get_image(image_id).get_result()
         # pylint: disable=line-too-long
+        # type: ignore[union-attr]
         except ibm.ibm_cloud_sdk_core.ApiException as e:  # type: ignore[union-attr]
             logger.error(e.message)
             with ux_utils.print_exception_no_traceback():
@@ -410,7 +411,7 @@ class IBM(clouds.Cloud):
                          'following fields in '
                          f'{os.path.expanduser(CREDENTIAL_FILE)} to function: '
                          f"""{", ".join(list(
-                            set(ibm_cos_fields) - set(base_config)))}"""
+                             set(ibm_cos_fields) - set(base_config)))}"""
                          f'{colorama.Style.RESET_ALL}')
 
         if set(required_fields) - set(base_config):

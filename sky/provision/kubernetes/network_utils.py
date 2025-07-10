@@ -27,8 +27,8 @@ def get_port_mode(
     except ValueError as e:
         with ux_utils.print_exception_no_traceback():
             raise ValueError(str(e)
-                + ' Cluster was setup with invalid port mode.'
-                + 'Please check the port_mode in provider config.') \
+                             + ' Cluster was setup with invalid port mode.'
+                             + 'Please check the port_mode in provider config.') \
                 from None
 
     return port_mode

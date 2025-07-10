@@ -403,7 +403,7 @@ class Optimizer:
             for resources, execution_cost in node_to_cost_map[node].items():
                 min_pred_cost_plus_egress = np.inf
                 for parent_resources, parent_cost in \
-                    dp_best_objective[parent].items():
+                        dp_best_objective[parent].items():
                     egress_cost = Optimizer._egress_cost_or_time(
                         minimize_cost, parent, parent_resources, node,
                         resources)
@@ -994,13 +994,13 @@ class Optimizer:
                 for resources in task.resources:
                     # Check if there exists launchable resources
                     local_task.set_resources(resources)
-                    launchable_resources_map, _ , _ = \
+                    launchable_resources_map, _, _ = \
                         _fill_in_launchable_resources(
-                            task = local_task,
-                            blocked_resources = blocked_resources,
-                            try_fix_with_sky_check = True,
-                            quiet = False
-                    )
+                            task=local_task,
+                            blocked_resources=blocked_resources,
+                            try_fix_with_sky_check=True,
+                            quiet=False
+                        )
                     if len(launchable_resources_map[resources]) != 0:
                         break
 

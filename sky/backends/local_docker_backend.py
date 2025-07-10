@@ -377,7 +377,7 @@ class LocalDockerBackend(backends.Backend['LocalDockerResourceHandle']):
             temp_file.flush()
             script_path = temp_file.name
             cmd = f'chmod +x {script_path} && docker cp {script_path} ' \
-                  f'{container.name}:/sky/{docker_utils.SKY_DOCKER_RUN_SCRIPT}'
+                f'{container.name}:/sky/{docker_utils.SKY_DOCKER_RUN_SCRIPT}'
             subprocess.run(cmd, shell=True, check=True)
 
         _, exec_log = container.exec_run(

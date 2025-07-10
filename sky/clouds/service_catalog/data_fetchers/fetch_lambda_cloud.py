@@ -75,8 +75,8 @@ def create_catalog(api_key: str, output_path: str) -> None:
             gpu_cnt = float(name_to_gpu_cnt(vm))
             vcpus = float(info[vm]['instance_type']['specs']['vcpus'])
             mem = float(info[vm]['instance_type']['specs']['memory_gib'])
-            price = float(info[vm]['instance_type']\
-                    ['price_cents_per_hour']) / 100
+            price = float(
+                info[vm]['instance_type']['price_cents_per_hour']) / 100
             gpuinfo = {
                 'Gpus': [{
                     'Name': gpu,

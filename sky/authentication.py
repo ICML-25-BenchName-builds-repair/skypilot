@@ -403,7 +403,7 @@ def setup_kubernetes_authentication(config: Dict[str, Any]) -> Dict[str, Any]:
     public_key_path = os.path.expanduser(PUBLIC_SSH_KEY_PATH)
     key_label = clouds.Kubernetes.SKY_SSH_KEY_SECRET_NAME
     cmd = f'kubectl create secret generic {key_label} ' \
-          f'--from-file=ssh-publickey={public_key_path}'
+        f'--from-file=ssh-publickey={public_key_path}'
     try:
         subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
     except subprocess.CalledProcessError as e:

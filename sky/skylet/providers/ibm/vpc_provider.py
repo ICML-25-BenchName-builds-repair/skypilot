@@ -42,7 +42,7 @@ class IBMVPCProvider:
         self.tagging_client = ibm.tagging_client()
         self.resource_group_id = resource_group_id
         self.cluster_name = cluster_name
-        ## region and zone might change between failovers
+        # region and zone might change between failovers
         self.region = None
         self.zone = None
 

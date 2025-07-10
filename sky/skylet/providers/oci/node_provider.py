@@ -464,8 +464,10 @@ class OCINodeProvider(NodeProvider):
             f"{state_word} {node_id} w/ sky_spot_flag: {preemptibleFlag}.")
 
     def _get_node(self, node_id):
-        self._get_filtered_nodes({},
-                                 force=True)  # All except for those terminated.
+        self._get_filtered_nodes(
+            {},
+            # All except for those terminated.
+            force=True)
         return self.cached_nodes.get(node_id, None)
 
     def _get_cached_node(self, node_id):

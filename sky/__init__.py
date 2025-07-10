@@ -2,6 +2,40 @@
 import os
 import subprocess
 
+from sky import backends
+from sky import benchmark
+from sky import clouds
+from sky.clouds.service_catalog import list_accelerators
+from sky.core import autostop
+from sky.core import cancel
+from sky.core import cost_report
+from sky.core import down
+from sky.core import download_logs
+from sky.core import job_status
+from sky.core import queue
+from sky.core import spot_cancel
+from sky.core import spot_queue
+from sky.core import spot_status
+from sky.core import start
+from sky.core import status
+from sky.core import stop
+from sky.core import storage_delete
+from sky.core import storage_ls
+from sky.core import tail_logs
+from sky.dag import Dag
+from sky.data import Storage
+from sky.data import StorageMode
+from sky.data import StoreType
+from sky.execution import exec  # pylint: disable=redefined-builtin
+from sky.execution import launch
+from sky.execution import spot_launch
+from sky.optimizer import Optimizer
+from sky.optimizer import OptimizeTarget
+from sky.resources import Resources
+from sky.skylet.job_lib import JobStatus
+from sky.status_lib import ClusterStatus
+from sky.task import Task
+
 # Replaced with the current commit when building the wheels.
 _SKYPILOT_COMMIT_SHA = '{{SKYPILOT_COMMIT_SHA}}'
 
@@ -38,39 +72,6 @@ __root_dir__ = os.path.dirname(os.path.abspath(__file__))
 
 # Keep this order to avoid cyclic imports
 # pylint: disable=wrong-import-position
-from sky import backends
-from sky import benchmark
-from sky import clouds
-from sky.clouds.service_catalog import list_accelerators
-from sky.core import autostop
-from sky.core import cancel
-from sky.core import cost_report
-from sky.core import down
-from sky.core import download_logs
-from sky.core import job_status
-from sky.core import queue
-from sky.core import spot_cancel
-from sky.core import spot_queue
-from sky.core import spot_status
-from sky.core import start
-from sky.core import status
-from sky.core import stop
-from sky.core import storage_delete
-from sky.core import storage_ls
-from sky.core import tail_logs
-from sky.dag import Dag
-from sky.data import Storage
-from sky.data import StorageMode
-from sky.data import StoreType
-from sky.execution import exec  # pylint: disable=redefined-builtin
-from sky.execution import launch
-from sky.execution import spot_launch
-from sky.optimizer import Optimizer
-from sky.optimizer import OptimizeTarget
-from sky.resources import Resources
-from sky.skylet.job_lib import JobStatus
-from sky.status_lib import ClusterStatus
-from sky.task import Task
 
 # Aliases.
 IBM = clouds.IBM

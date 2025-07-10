@@ -335,7 +335,7 @@ class SCPClient:
             url = f'{url}?{parse.urlencode(enc_params)}'
 
         message = method + url + self.timestamp \
-                  + self.access_key + self.project_id + self.client_type
+            + self.access_key + self.project_id + self.client_type
         message = bytes(message, 'utf-8')
         secret = bytes(self.secret_key, 'utf-8')
         signature = str(
